@@ -4,6 +4,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,14 +17,17 @@
 #define DEFAULT_PORT 1337
 #define DEFAULT_BACKLOG 100
 
-
 static void create_socket(void);
+static void kill_server(void);
 static void spawn_server(void);
 static void parse_config_file(void);
 static void open_file(void);
 static void install_signal_handlers(void);
 
-static char server_command[MAX_COMMAND_LINE] = "node example/test.js";
+static const char server_command[MAX_COMMAND_LINE] = "node example/test.js";
+
+static pid_t current_server;
+
 
 int
 main(int arc, char **argv)
@@ -31,7 +35,7 @@ main(int arc, char **argv)
     pid_t pid;
     int status;
 
-    printf("node-launcherd started\n");
+    printf("node-launcherd started: %ld\n", (long) getpid());
 
     install_signal_handlers();
     parse_config_file();
@@ -56,9 +60,12 @@ main(int arc, char **argv)
 	    abort();
 	}
 
-	/* If the PID is an active PID, then we should respawn it. */
-	spawn_server();
-
+	if (pid == current_server) {
+	    /* If the PID is an active PID, then we should respawn it. */
+	    spawn_server();
+	} else {
+	    printf("Old process finally exitted. (%ld)\n", (long) pid);
+	}
 	/* Otherwise it is an old process and we can just let it exit */
     }
 
@@ -66,9 +73,29 @@ main(int arc, char **argv)
 }
 
 static void
+handler(int signum)
+{
+    printf("Got respawn signal\n");
+
+    kill_server();
+    spawn_server();
+}
+
+static void
 install_signal_handlers(void)
 {
+    int r;
+    struct sigaction sa;
 
+    sa.sa_handler = handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; /* Restart functions if interrupted by handler */
+    r = sigaction(SIGUSR1, &sa, NULL);
+
+    if (r == -1) {
+	perror("error installing handler");
+	abort();
+    }
 }
 
 static void
@@ -138,6 +165,19 @@ create_socket(void)
 }
 
 static void
+kill_server(void)
+{
+    int r;
+
+    r = kill(current_server, SIGUSR1);
+
+    if (r != 0) {
+	perror("couldn't kill existing server");
+	abort();
+    }
+}
+
+static void
 spawn_server(void)
 {
     pid_t pid;
@@ -153,5 +193,7 @@ spawn_server(void)
     } else {
 	/* Parent process */
 	printf("Spawned: %ld\n", (long) pid);
+
+	current_server = pid;
     }
 }
