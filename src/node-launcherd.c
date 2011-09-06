@@ -12,6 +12,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 
+#include "str.h"
+
+#define MAX_LINE_SIZE 4096
 #define MAX_COMMAND_LINE 1024
 #define DEFAULT_ADDR INADDR_ANY
 #define DEFAULT_PORT 1337
@@ -24,6 +27,7 @@ static void parse_config_file(void);
 static void open_file(void);
 static void install_signal_handlers(void);
 
+static const char *config_file_name = "example/config";
 static const char server_command[MAX_COMMAND_LINE] = "node example/test.js";
 
 static pid_t current_server;
@@ -101,7 +105,42 @@ install_signal_handlers(void)
 static void
 parse_config_file(void)
 {
+    FILE *f;
+    int i, n, r;
+    static char line[MAX_LINE_SIZE];
+    char *command_value[2];
 
+    f = fopen(config_file_name, "r");
+
+    if (f == NULL) {
+	perror("opening config file");
+	abort();
+    }
+
+    i = 0;
+    while (i++, (n = str_readline(f, line, sizeof line)) > 0) {
+
+	if (line[0] == '#') {
+	    /* Comment line */
+	    continue;
+	}
+
+	r = str_split(line, ':', command_value, 2);
+
+	if (r < 2) {
+	    /* Must be a command portition */
+	    n = -1;
+	    break;
+	}
+	command_value[1] = str_strip(command_value[1], ' ');
+
+	printf("got command: '%s' with value '%s' (split: %d)\n", command_value[0], command_value[1], r);
+    }
+
+    if (n != 0) {
+	fprintf(stderr, "Error on line: %d\n", i);
+	abort();
+    }
 }
 
 static void
