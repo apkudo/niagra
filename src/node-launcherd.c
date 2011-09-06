@@ -2,12 +2,20 @@
 
 #include <sys/types.h>
 
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 
 #define MAX_COMMAND_LINE 1024
+#define DEFAULT_ADDR INADDR_ANY
+#define DEFAULT_PORT 1337
+#define DEFAULT_BACKLOG 100
+
 
 static void create_socket(void);
 static void spawn_server(void);
@@ -78,7 +86,55 @@ open_file(void)
 static void
 create_socket(void)
 {
+    int s;
+    int r;
+    struct sockaddr_in sockaddr;
+    const int flags = 1;
+
     /* create, bind and listen on the socket */
+    s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+    if (s == -1) {
+	/* FIXME: look at errno and provide better error handling */
+	perror("error creating socket");
+	abort();
+    }
+
+    /* Set up socket os that it is a reusable address */
+    r  = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const void *)&flags, sizeof flags);
+    if (r != 0) {
+	perror("error setting re-use addr option");
+	abort();
+    }
+
+    /* Ensure the socket is non-blocking like node expects */
+    r = fcntl(s, F_SETFL, O_NONBLOCK);
+    if (r == -1) {
+	perror("error setting non-blocking");
+	abort();
+    }
+
+    /* Set up the socket address structure */
+    memset(&sockaddr, 0, sizeof sockaddr);
+    sockaddr.sin_family = AF_INET;
+    sockaddr.sin_port = htons(DEFAULT_PORT);
+    sockaddr.sin_addr.s_addr = DEFAULT_ADDR;
+
+    r = bind(s, (struct sockaddr *) &sockaddr, sizeof sockaddr);
+
+    if (r != 0) {
+	perror("error binding socket");
+	abort();
+    }
+
+    r = listen(s, DEFAULT_BACKLOG);
+
+    if (r != 0) {
+	perror("error listening on socket");
+	abort();
+    }
+
+    printf("opened socket on fd: %d\n", s);
 }
 
 static void

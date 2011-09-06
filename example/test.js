@@ -8,6 +8,6 @@ function helloWorld(req, res) {
 }
 
 var server = http.createServer(helloWorld)
-server.listen(1337, "127.0.0.1");
+server.listenFD(3)
 
 console.log('[' + pid + ']', 'Started')
