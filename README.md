@@ -24,6 +24,8 @@ In addition to providing the zero downtime functionality, node-launcherd provide
 
 node-launcherd is also able to spawn multiple copies of the server when necessary. This might be useful when running servers on a multi-core machine. With this approach each spawned process will intentionally race on `accept`. The underlying operating system kernel will pick the winner of the race. Your mileage may vary depending on your kernel as to how scalable this approach is.
 
+node-launcherd also monitors the running process and is able to respawn a server process if it terminates unexpectedly. 
+
 ## Usage
 
 node-launcherd is designed to run indefinitely. You system's daemon management tool (e.g: launchd, init, etc), should be used to manage node-launcherd's life-cycle.
