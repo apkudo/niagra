@@ -66,3 +66,4 @@ Not everything documented is currently actually implemented. The following is no
  * IPv6 sockets
  * dropping privileges
  * multiple server instances
+ * daemonize in non-debug mode

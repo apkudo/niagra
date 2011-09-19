@@ -69,19 +69,49 @@ static int lookup_fd_by_name(const char *name);
 static void fprint_fd_socket(FILE *f, struct fd *fd);
 #endif
 
-static const char *config_file_name = "example/config";
+static const char *config_file_name;
 static char server_command[MAX_COMMAND_LINE];
 static struct fd fds[MAX_FDS];
 static int num_fds;
 static pid_t current_server;
+static bool debug_mode = false;
+
+static void
+usage(void)
+{
+    printf("node-launcherd: [-d] config\n");
+    exit(EXIT_FAILURE);
+}
 
 int
-main(int arc, char **argv)
+main(int argc, char **argv)
 {
     pid_t pid;
     int status;
+    int ch;
 
-    printf("node-launcherd started: %ld\n", (long) getpid());
+    while ((ch = getopt(argc, argv, "d")) != -1) {
+	switch (ch) {
+	case 'd':
+	    debug_mode = true;
+	    break;
+	case '?':
+	default:
+	    usage();
+	}
+    }
+    argc -= optind;
+    argv += optind;
+
+    if (argc != 1) {
+	usage();
+    }
+
+    config_file_name = argv[0];
+
+    if (debug_mode) {
+	fprintf(stderr, "node-launcherd started: %ld\n", (long) getpid());
+    }
 
     install_signal_handlers();
     parse_config_file();
