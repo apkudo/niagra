@@ -54,16 +54,37 @@ str_readline(FILE *stream, char *line, int max_len)
     return len;
 }
 
+/**
+ * Destructively split a string ('c') into multiple strings.
+ *
+ * A pointer to each new string is stored in the 'new_strings'
+ * array.
+ *
+ * A maximum of 'max_new_strings' will be created. 'max_new_strings'
+ * must be at least one. The array 'new_strings' must have at least
+ * 'max_new_strings' elements.
+ *
+ * The string is split on the character 'sep'.
+ *
+ * The number of new strings that could be created is returned. This may
+ * be more than 'max_new_strings'.
+ *
+ * If multiple adjacent 'sep' characters is encountered they are treated
+ * as a single 'sep' character.
+ *
+ * This operation is destructive; the original string will no longer
+ * be valid.
+ */
 int
-str_split(char *c, char sep, char **splits, int max_split)
+str_split(char *c, char sep, char **new_strings, int max_new_strings)
 {
-    int split = 1;
+    int num_new_strings = 1;
 
-    splits[0] = c;
+    new_strings[0] = c;
 
     while (*c != '\0') {
 	if (*c == sep) {
-	    if (split < max_split) {
+	    if (num_new_strings < max_new_strings) {
 		*c = '\0';
 	    }
 	    c++;
@@ -71,17 +92,26 @@ str_split(char *c, char sep, char **splits, int max_split)
 		c++;
 	    }
 
-	    if (split < max_split) {
-		splits[split] = c;
+	    if (num_new_strings < max_new_strings) {
+		new_strings[num_new_strings] = c;
 	    }
-	    split++;
+	    num_new_strings++;
 	}
 	c++;
     }
 
-    return split;
+    return num_new_strings;
 }
 
+/**
+ * Destructively remove any of the 'strip' characters from the
+ * start and end of the string 'c'.
+ *
+ * The newly stripped string is returned.
+ *
+ * This operation is destructive; the original string will no longer
+ * be valid.
+ */
 char *
 str_strip(char *c, char strip)
 {
