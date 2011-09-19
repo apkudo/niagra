@@ -78,6 +78,7 @@ static int num_fds;
 static pid_t current_server;
 static bool debug_mode = false;
 static struct timeval last_singint_time;
+static struct timeval last_spawn_time;
 
 static void
 usage(void)
@@ -525,6 +526,17 @@ static void
 spawn_server(void)
 {
     pid_t pid;
+
+
+    /* if we spawn too quickly, just exit */
+    struct timeval new_time;
+    (void) gettimeofday(&new_time, NULL);
+    if (new_time.tv_sec == last_spawn_time.tv_sec) {
+	fprintf(stderr, "Spawning too fast!\n");
+	exit(EXIT_FAILURE);
+    }
+    last_spawn_time = new_time;
+
 
     pid = fork();
 
