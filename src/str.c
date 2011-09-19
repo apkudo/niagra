@@ -1,7 +1,11 @@
 /* Copyright: Ben Leslie 2011: See LICENSE file. */
 
 #include <errno.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "str.h"
@@ -133,4 +137,109 @@ str_strip(char *c, char strip)
     }
 
     return start;
+}
+
+/**
+ * Copy the source string 'str' in to the destination buffer 'dst'.
+ *
+ * The destination buffer has a maximum 'size'.
+ *
+ * Returns '0' on success.
+ *
+ * On failure returns '-1'.
+ *
+ * Failure can occur if the source string is too large to fit in the
+ * destination buffer. The state of the destination buffer is
+ * undefined in this case
+ *
+ * This is logically equivalent to:
+ *
+ * if (strlen(src) + 1 <= size) {
+ *    strcpy(dst, src);
+ *    return 0;
+ * } else {
+ *    return -1;
+ * }
+ */
+int str_copy(char *dst, const char *src, int size)
+{
+    (void) strncpy(dst, src, size);
+    return dst[size - 1] == '\0' ? 0 : -1;
+}
+
+/**
+ * Concatented the source string 'str' in to the end of the string in
+ * the destination buffer 'dst'.
+ *
+ * The destination buffer has a maximum 'size'.
+ *
+ * Returns '0' on success.
+ *
+ * On failure returns '-1'.
+ *
+ * Failure can occur if the concatenated string is too large to fit in
+ * the destination buffer. The state of the destination buffer is
+ * undefined in this case
+ *
+ * This is logically equivalent to:
+ *
+ * if (strlen(src) + 1 <= size) {
+ *    strcat(dst, src);
+ *    return 0;
+ * } else {
+ *    return -1;
+ * }
+ */
+int str_concat(char *dst, const char *src, int size)
+{
+    (void) strncat(dst, src, size);
+    return dst[size - 1] == '\0' ? 0 : -1;
+}
+
+/**
+ * Parse an unsigned 16 bit integer from a 'str' in to 'val'. Return 0
+ * on success and -1 on error.
+ */
+int str_uint16(const char *str, uint16_t *val) {
+    unsigned long tmp;
+    errno = 0;
+
+    tmp = strtoul(str, NULL, 0);
+
+    if (tmp > UINT16_MAX || tmp < 0) {
+	errno = ERANGE;
+	return -1;
+    }
+
+    if (errno != 0) {
+	return -1;
+    }
+
+    *val = (uint16_t) tmp;
+
+    return 0;
+}
+
+/**
+ * Parse an signed integer from a 'str' in to 'val'. Return 0
+ * on success and -1 on error.
+ */
+int str_int(const char *str, int *val) {
+    long tmp;
+    errno = 0;
+
+    tmp = strtol(str, NULL, 0);
+
+    if (tmp > INT_MAX || tmp < INT_MIN) {
+	errno = ERANGE;
+	return -1;
+    }
+
+    if (errno != 0) {
+	return -1;
+    }
+
+    *val = (int) tmp;
+
+    return 0;
 }
