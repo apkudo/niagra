@@ -87,10 +87,17 @@ main(int arc, char **argv)
     parse_config_file();
     open_file();
     create_sockets();
+
+    if (str_isempty(server_command)) {
+	fprintf(stderr, "No command specified.\n");
+	abort();
+    }
+
     update_command_line();
     spawn_server();
 
     for (;;) {
+	bool respawn = true;
 	pid = waitpid(-1, &status, 0);
 
 	if (pid == -1) {
@@ -99,7 +106,16 @@ main(int arc, char **argv)
 	}
 
 	if (WIFEXITED(status)) {
-	    printf("process exitted. PID: %ld STATUS: %d\n", (long) pid, WEXITSTATUS(status));
+	    switch (WEXITSTATUS(status)) {
+	    case 126:
+	    case 127:
+		/* we treat 126 and 127 as errors from the shell itself */
+		respawn = false;
+		break;
+	    default:
+		printf("process exitted. PID: %ld STATUS: %d\n", (long) pid, WEXITSTATUS(status));
+		break;
+	    }
 	} else if (WIFSIGNALED(status)) {
 	    printf("process signalled. PID: %ld STATUS: %d\n", (long) pid, WTERMSIG(status));
 	} else {
@@ -109,7 +125,11 @@ main(int arc, char **argv)
 
 	if (pid == current_server) {
 	    /* If the PID is an active PID, then we should respawn it. */
-	    spawn_server();
+	    if (respawn) {
+		spawn_server();
+	    } else {
+		break;
+	    }
 	} else {
 	    printf("Old process finally exitted. (%ld)\n", (long) pid);
 	}
