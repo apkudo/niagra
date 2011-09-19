@@ -13,6 +13,7 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 
 #include "str.h"
@@ -57,7 +58,8 @@ struct fd {
 
 static void create_sockets(void);
 static int create_socket(struct in_addr addr, uint16_t port, int backlog);
-static void kill_server(void);
+static void notify_server(void);
+static void terminate_server(void);
 static void spawn_server(void);
 static void parse_config_file(void);
 static void open_file(void);
@@ -75,6 +77,7 @@ static struct fd fds[MAX_FDS];
 static int num_fds;
 static pid_t current_server;
 static bool debug_mode = false;
+static struct timeval last_singint_time;
 
 static void
 usage(void)
@@ -143,7 +146,9 @@ main(int argc, char **argv)
 		respawn = false;
 		break;
 	    default:
-		printf("process exitted. PID: %ld STATUS: %d\n", (long) pid, WEXITSTATUS(status));
+		/*
+		  printf("process exitted. PID: %ld STATUS: %d\n", (long) pid, WEXITSTATUS(status));
+		*/
 		break;
 	    }
 	} else if (WIFSIGNALED(status)) {
@@ -161,7 +166,7 @@ main(int argc, char **argv)
 		break;
 	    }
 	} else {
-	    printf("Old process finally exitted. (%ld)\n", (long) pid);
+	    /* old process exitted, we don't really care */
 	}
 	/* Otherwise it is an old process and we can just let it exit */
     }
@@ -172,10 +177,36 @@ main(int argc, char **argv)
 static void
 handler(int signum)
 {
-    printf("Got respawn signal\n");
+    fprintf(stderr, "SIGUSR1: respawn server\n");
 
-    kill_server();
+    notify_server();
     spawn_server();
+}
+
+static void
+sigint_handler(int signum)
+{
+    struct timeval new_time;
+    (void) gettimeofday(&new_time, NULL);
+    if (new_time.tv_sec == last_singint_time.tv_sec) {
+	fprintf(stderr, "SIGINT(fast): terminate server & exit\n");
+	terminate_server();
+	exit(EXIT_FAILURE);
+    }
+
+    last_singint_time = new_time;
+
+    fprintf(stderr, "SIGINT: restart server\n");
+    terminate_server();
+    spawn_server();
+}
+
+static void
+sigterm_handler(int signum)
+{
+    fprintf(stderr, "SIGTERM: terminate server & exit\n");
+    terminate_server();
+    exit(EXIT_FAILURE);
 }
 
 static void
@@ -192,6 +223,25 @@ install_signal_handlers(void)
     if (r == -1) {
 	perror("error installing handler");
 	abort();
+    }
+
+    sa.sa_handler = sigterm_handler;
+    r = sigaction(SIGTERM, &sa, NULL);
+
+    if (r == -1) {
+	perror("error installing handler");
+	abort();
+    }
+
+
+    if (debug_mode) {
+	sa.sa_handler = sigint_handler;
+	r = sigaction(SIGINT, &sa, NULL);
+
+	if (r == -1) {
+	    perror("error installing handler");
+	    abort();
+	}
     }
 }
 
@@ -446,11 +496,24 @@ update_command_line(void)
 }
 
 static void
-kill_server(void)
+notify_server(void)
 {
     int r;
 
     r = kill(current_server, SIGUSR1);
+
+    if (r != 0) {
+	perror("couldn't kill existing server");
+	abort();
+    }
+}
+
+static void
+terminate_server(void)
+{
+    int r;
+
+    r = kill(current_server, SIGTERM);
 
     if (r != 0) {
 	perror("couldn't kill existing server");
@@ -473,8 +536,6 @@ spawn_server(void)
 	abort();
     } else {
 	/* Parent process */
-	printf("Spawned: %ld\n", (long) pid);
-
 	current_server = pid;
     }
 }
