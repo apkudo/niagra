@@ -21,4 +21,3 @@ process.on('SIGUSR1', sigusr1)
 server.listenFD(3)
 
 console.log('[' + pid + ']', 'Started')
-
