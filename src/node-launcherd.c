@@ -141,6 +141,8 @@ parse_config_file(void)
 	fprintf(stderr, "Error on line: %d\n", i);
 	abort();
     }
+
+    (void) fclose(f); /* if there is an error on close, we don't care */
 }
 
 static void
