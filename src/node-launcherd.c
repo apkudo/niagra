@@ -13,11 +13,16 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <sys/wait.h>
+#include <syslog.h>
 
 #include "str.h"
 
+#define OUTPUT_LOG "output.log"
+#define SYSLOG_IDENT "node-launcher"
 #define FD_PREFIX " --fd "
 #define FD_PREFIX_SIZE (sizeof FD_PREFIX)
 #define INT_STRING_LEN 10
@@ -50,8 +55,8 @@ struct fd {
     int fd;
     enum fd_type fd_type;
     union {
-	struct fd_socket sock;
-	struct fd_file file;
+        struct fd_socket sock;
+        struct fd_file file;
     } x;
 };
 
@@ -88,35 +93,98 @@ usage(void)
     exit(EXIT_FAILURE);
 }
 
+static void
+daemonize(void)
+{
+    pid_t child;
+    int fd;
+
+    if ((child = fork()) == -1) {
+        syslog(LOG_ERR, "error forking: %m");
+        exit(EXIT_FAILURE);
+    }
+
+    if (child == 0) {
+        (void) close(STDIN_FILENO);
+        (void) close(STDOUT_FILENO);
+        (void) close(STDERR_FILENO);
+
+        /* Open /dev/null */
+        /* I really don't like this code. It should likely be refactored or removed. */
+        fd = open("/dev/null", O_RDONLY);
+        if (fd != STDIN_FILENO) {
+            syslog(LOG_ALERT, "Expected file to be opened with fd %d, not %d", STDIN_FILENO, fd);
+            exit(EXIT_FAILURE);
+        }
+
+        fd = open(OUTPUT_LOG, O_WRONLY | O_CREAT | O_APPEND, 0666);
+        if (fd != STDOUT_FILENO) {
+            syslog(LOG_ALERT, "Expected file to be opened with fd %d, not %d", STDOUT_FILENO, fd);
+            exit(EXIT_FAILURE);
+        }
+
+        fd = dup2(fd, STDERR_FILENO);
+        if (fd != STDERR_FILENO) {
+            syslog(LOG_ALERT, "Expected file to be opened with fd %d, not %d", STDERR_FILENO, fd);
+            exit(EXIT_FAILURE);
+        }
+
+        (void) umask(027);
+
+        if (setsid() == -1) {
+            syslog(LOG_ALERT, "unable to become session leader: %m");
+            exit(EXIT_FAILURE);
+        }
+#if 0
+        if (chdir("/") != 0) {
+            syslog(LOG_ALERT, "unable to change directory: %m");
+            exit(EXIT_FAILURE);
+        }
+#endif
+    } else {
+        exit(EXIT_SUCCESS);
+    }
+}
+
 int
 main(int argc, char **argv)
 {
     pid_t pid;
     int status;
     int ch;
+    int logopt = LOG_NDELAY;
 
     while ((ch = getopt(argc, argv, "d")) != -1) {
-	switch (ch) {
-	case 'd':
-	    debug_mode = true;
-	    break;
-	case '?':
-	default:
-	    usage();
-	}
+    switch (ch) {
+    case 'd':
+        debug_mode = true;
+        break;
+    case '?':
+    default:
+        usage();
+    }
     }
     argc -= optind;
     argv += optind;
 
     if (argc != 1) {
-	usage();
+    usage();
+    }
+
+    /* If we aren't in debug mode, we need to daemonize */
+    if (!debug_mode) {
+        daemonize();
     }
 
     config_file_name = argv[0];
 
     if (debug_mode) {
-	fprintf(stderr, "node-launcherd started: %ld\n", (long) getpid());
+        logopt |= LOG_PERROR;
     }
+
+    openlog(SYSLOG_IDENT, logopt, LOG_DAEMON);
+
+    syslog(LOG_INFO, "node-launcherd started: %ld", (long) getpid());
 
     install_signal_handlers();
     parse_config_file();
@@ -124,62 +192,61 @@ main(int argc, char **argv)
     create_sockets();
 
     if (str_isempty(server_command)) {
-	fprintf(stderr, "No command specified.\n");
-	abort();
+        syslog(LOG_ERR, "no command specified.");
+        exit(EXIT_FAILURE);
     }
 
     update_command_line();
     spawn_server();
 
     for (;;) {
-	bool respawn = !debug_mode;
-	pid = waitpid(-1, &status, 0);
+    bool respawn = !debug_mode;
+    pid = waitpid(-1, &status, 0);
 
-	if (pid == -1) {
-	    perror("error waiting for process");
-	    abort();
-	}
-
-	if (WIFEXITED(status)) {
-	    switch (WEXITSTATUS(status)) {
-	    case 126:
-	    case 127:
-		/* we treat 126 and 127 as errors from the shell itself */
-		respawn = false;
-		break;
-	    default:
-		/*
-		  printf("process exitted. PID: %ld STATUS: %d\n", (long) pid, WEXITSTATUS(status));
-		*/
-		break;
-	    }
-	} else if (WIFSIGNALED(status)) {
-	    printf("process signalled. PID: %ld STATUS: %d\n", (long) pid, WTERMSIG(status));
-	} else {
-	    fprintf(stderr, "error: Unexecpted status for PID: %ld\n", (long) pid);
-	    abort();
-	}
-
-	if (pid == current_server) {
-	    /* If the PID is an active PID, then we should respawn it. */
-	    if (respawn) {
-		spawn_server();
-	    } else {
-		break;
-	    }
-	} else {
-	    /* old process exitted, we don't really care */
-	}
-	/* Otherwise it is an old process and we can just let it exit */
+    if (pid == -1) {
+            syslog(LOG_ERR, "error waiting for process: %m");
+            exit(EXIT_FAILURE);
     }
 
-    return EXIT_SUCCESS;
+    if (WIFEXITED(status)) {
+        switch (WEXITSTATUS(status)) {
+        case 126:
+        case 127:
+        /* we treat 126 and 127 as errors from the shell itself */
+                syslog(LOG_ERR, "process exited with shell error: PID: %ld STATUS: %d", (long) pid, WEXITSTATUS(status));
+        respawn = false;
+        break;
+        default:
+                syslog(LOG_ERR, "process exited. PID: %ld STATUS: %d", (long) pid, WEXITSTATUS(status));
+        break;
+        }
+    } else if (WIFSIGNALED(status)) {
+        syslog(LOG_ERR, "process signalled. PID: %ld STATUS: %d", (long) pid, WTERMSIG(status));
+    } else {
+        syslog(LOG_ERR, "error: Unexecpted status for PID: %ld", (long) pid);
+            exit(EXIT_FAILURE);
+    }
+
+    if (pid == current_server) {
+        /* If the PID is an active PID, then we should respawn it. */
+        if (respawn) {
+        spawn_server();
+        } else {
+        break;
+        }
+    } else {
+        /* old process exited, we don't really care */
+    }
+    /* Otherwise it is an old process and we can just let it exit */
+    }
+
+    return EXIT_FAILURE;
 }
 
 static void
 handler(int signum)
 {
-    fprintf(stderr, "SIGUSR1: respawn server\n");
+    syslog(LOG_INFO, "SIGUSR1: respawn server");
 
     notify_server();
     spawn_server();
@@ -191,14 +258,14 @@ sigint_handler(int signum)
     struct timeval new_time;
     (void) gettimeofday(&new_time, NULL);
     if (new_time.tv_sec == last_singint_time.tv_sec) {
-	fprintf(stderr, "SIGINT(fast): terminate server & exit\n");
-	terminate_server();
-	exit(EXIT_FAILURE);
+    syslog(LOG_INFO, "SIGINT(fast): terminate server & exit");
+    terminate_server();
+    exit(EXIT_SUCCESS);
     }
 
     last_singint_time = new_time;
 
-    fprintf(stderr, "SIGINT: restart server\n");
+    syslog(LOG_INFO, "SIGINT: restart server");
     terminate_server();
     spawn_server();
 }
@@ -206,7 +273,7 @@ sigint_handler(int signum)
 static void
 sigterm_handler(int signum)
 {
-    fprintf(stderr, "SIGTERM: terminate server & exit\n");
+    syslog(LOG_INFO, "SIGTERM: terminate server & exit");
     terminate_server();
     exit(EXIT_FAILURE);
 }
@@ -223,27 +290,27 @@ install_signal_handlers(void)
     r = sigaction(SIGUSR1, &sa, NULL);
 
     if (r == -1) {
-	perror("error installing handler");
-	abort();
+    syslog(LOG_ERR, "error installing handler: %m");
+        exit(EXIT_FAILURE);
     }
 
     sa.sa_handler = sigterm_handler;
     r = sigaction(SIGTERM, &sa, NULL);
 
     if (r == -1) {
-	perror("error installing handler");
-	abort();
+    syslog(LOG_ERR, "error installing handler: %m");
+        exit(EXIT_FAILURE);
     }
 
 
     if (debug_mode) {
-	sa.sa_handler = sigint_handler;
-	r = sigaction(SIGINT, &sa, NULL);
+    sa.sa_handler = sigint_handler;
+    r = sigaction(SIGINT, &sa, NULL);
 
-	if (r == -1) {
-	    perror("error installing handler");
-	    abort();
-	}
+    if (r == -1) {
+            syslog(LOG_ERR, "error installing handler: %m");
+            exit(EXIT_FAILURE);
+    }
     }
 }
 
@@ -260,123 +327,123 @@ parse_config_file(void)
     f = fopen(config_file_name, "r");
 
     if (f == NULL) {
-	perror("opening config file");
-	abort();
+    syslog(LOG_ERR, "opening config file: %m");
+        exit(EXIT_FAILURE);
     }
 
     i = 0;
     while (i++, (n = str_readline(f, line, sizeof line)) > 0) {
 
-	if (line[0] == '#') {
-	    /* Comment line */
-	    continue;
-	}
+    if (line[0] == '#') {
+        /* Comment line */
+        continue;
+    }
 
-	r = str_split(line, ':', command_value, 2);
+    r = str_split(line, ':', command_value, 2);
 
-	if (r < 2) {
-	    /* Must be a command portition */
-	    n = -1;
-	    break;
-	}
-	command_value[1] = str_strip(command_value[1], ' ');
+    if (r < 2) {
+        /* Must be a command portition */
+        n = -1;
+        break;
+    }
+    command_value[1] = str_strip(command_value[1], ' ');
 
-	if (strcmp(command_value[0], "command") == 0) {
-	    if (!str_isempty(server_command)) {
-		fprintf(stderr, "command already set.\n");
-		n = -1;
-		break;
-	    }
+    if (strcmp(command_value[0], "command") == 0) {
+        if (!str_isempty(server_command)) {
+        syslog(LOG_INFO, "command already set.");
+        n = -1;
+        break;
+        }
 
-	    r = str_copy(server_command, command_value[1], sizeof server_command);
+        r = str_copy(server_command, command_value[1], sizeof server_command);
 
-	    if (r == -1) {
-		fprintf(stderr, "command too long.\n");
-		n = -1;
-		break;
-	    }
-	} else if (strcmp(command_value[0], "socket") == 0) {
-	    struct fd *fd;
+        if (r == -1) {
+        syslog(LOG_INFO, "command too long.");
+        n = -1;
+        break;
+        }
+    } else if (strcmp(command_value[0], "socket") == 0) {
+        struct fd *fd;
 
-	    r = str_split(command_value[1], ' ', socket_parts, NUM_SOCK_OPTIONS);
-	    if (r != NUM_SOCK_OPTIONS) {
-		fprintf(stderr, "Incorrect number of fields (%d) for socket options. Should be %d fields.\n", r, NUM_SOCK_OPTIONS);
-		n = -1;
-		break;
-	    }
+        r = str_split(command_value[1], ' ', socket_parts, NUM_SOCK_OPTIONS);
+        if (r != NUM_SOCK_OPTIONS) {
+        syslog(LOG_INFO, "Incorrect number of fields (%d) for socket options. Should be %d fields.", r, NUM_SOCK_OPTIONS);
+        n = -1;
+        break;
+        }
 
-	    if (num_fds >= MAX_FDS) {
-		fprintf(stderr, "Too many fds defined. A maximum of %d is allowed\n", MAX_FDS);
-		n = -1;
-		break;
-	    }
+        if (num_fds >= MAX_FDS) {
+        syslog(LOG_INFO, "Too many fds defined. A maximum of %d is allowed", MAX_FDS);
+        n = -1;
+        break;
+        }
 
-	    fd = &fds[num_fds];
+        fd = &fds[num_fds];
 
-	    if (lookup_fd_by_name(socket_parts[0]) != -1) {
-		fprintf(stderr, "duplicate fd name: %s\n", socket_parts[0]);
-		n = -1;
-		break;
-	    }
+        if (lookup_fd_by_name(socket_parts[0]) != -1) {
+        syslog(LOG_INFO, "duplicate fd name: %s", socket_parts[0]);
+        n = -1;
+        break;
+        }
 
 
-	    r = str_copy(fd->name, socket_parts[0], sizeof fd->name);
-	    if (r == -1) {
-		fprintf(stderr, "socket name too long\n");
-		n = -1;
-		break;
-	    }
+        r = str_copy(fd->name, socket_parts[0], sizeof fd->name);
+        if (r == -1) {
+        syslog(LOG_INFO, "socket name too long");
+        n = -1;
+        break;
+        }
 
-	    if (strcmp(socket_parts[1], "4") == 0) {
-		fd->x.sock.ip_ver = 4;
-	    } else if (strcmp(socket_parts[1], "6") == 0) {
-		fd->x.sock.ip_ver = 6;
-	    } else {
-		fprintf(stderr, "IP version must be '4' or '6'\n");
-		n = -1;
-		break;
-	    }
+        if (strcmp(socket_parts[1], "4") == 0) {
+        fd->x.sock.ip_ver = 4;
+        } else if (strcmp(socket_parts[1], "6") == 0) {
+        fd->x.sock.ip_ver = 6;
+        } else {
+        syslog(LOG_INFO, "IP version must be '4' or '6'");
+        n = -1;
+        break;
+        }
 
-	    r = inet_aton(socket_parts[2], &fd->x.sock.addr);
-	    if (r == 0) {
-		fprintf(stderr, "invalid network address\n");
-		n = -1;
-		break;
-	    }
+        r = inet_aton(socket_parts[2], &fd->x.sock.addr);
+        if (r == 0) {
+        syslog(LOG_INFO, "invalid network address");
+        n = -1;
+        break;
+        }
 
-	    r = str_uint16(socket_parts[3], &fd->x.sock.port);
-	    if (r == -1) {
-		fprintf(stderr, "invalid port number\n");
-		n = -1;
-		break;
-	    }
+        r = str_uint16(socket_parts[3], &fd->x.sock.port);
+        if (r == -1) {
+        syslog(LOG_INFO, "invalid port number");
+        n = -1;
+        break;
+        }
 
-	    r = str_int(socket_parts[4], &fd->x.sock.backlog);
-	    if (r == -1) {
-		fprintf(stderr, "invalid backlog\n");
-		n = -1;
-		break;
-	    }
+        r = str_int(socket_parts[4], &fd->x.sock.backlog);
+        if (r == -1) {
+        syslog(LOG_INFO, "invalid backlog");
+        n = -1;
+        break;
+        }
 
-	    fd->fd_type = SOCKET_FD;
+        fd->fd_type = SOCKET_FD;
 
-	    num_fds++;
+        num_fds++;
 
-	} else if (strcmp(command_value[0], "user") == 0) {
-	    printf("WARNING: Got user command: %s - not implemented\n", command_value[1]);
-	} else if (strcmp(command_value[0], "copies") == 0) {
-	    printf("WARNING: Got copies command: %s - not implemented\n", command_value[1]);
-	} else {
-	    /* Invalid command */
-	    fprintf(stderr, "Invalid command: '%s'\n", command_value[0]);
-	    n = -1;
-	    break;
-	}
+    } else if (strcmp(command_value[0], "user") == 0) {
+        syslog(LOG_INFO, "WARNING: Got user command: %s - not implemented", command_value[1]);
+    } else if (strcmp(command_value[0], "copies") == 0) {
+        syslog(LOG_INFO, "WARNING: Got copies command: %s - not implemented", command_value[1]);
+    } else {
+        /* Invalid command */
+        syslog(LOG_INFO, "Invalid command: '%s'", command_value[0]);
+        n = -1;
+        break;
+    }
     }
 
     if (n != 0) {
-	fprintf(stderr, "Error on line: %d\n", i);
-	abort();
+    syslog(LOG_INFO, "Error on line: %d", i);
+        exit(EXIT_FAILURE);
     }
 
     (void) fclose(f); /* if there is an error on close, we don't care */
@@ -392,11 +459,11 @@ static void
 create_sockets(void) {
     int i;
     for (i = 0; i < num_fds; i++) {
-	struct fd *fd = &fds[i];
-	if (fd->fd_type != SOCKET_FD) {
-	    continue;
-	}
-	fd->fd = create_socket(fd->x.sock.addr, fd->x.sock.port, fd->x.sock.backlog);
+    struct fd *fd = &fds[i];
+    if (fd->fd_type != SOCKET_FD) {
+        continue;
+    }
+    fd->fd = create_socket(fd->x.sock.addr, fd->x.sock.port, fd->x.sock.backlog);
     }
 }
 
@@ -412,23 +479,23 @@ create_socket(struct in_addr addr, uint16_t port, int backlog)
     s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (s == -1) {
-	/* FIXME: look at errno and provide better error handling */
-	perror("error creating socket");
-	abort();
+    /* FIXME: look at errno and provide better error handling */
+    syslog(LOG_ERR, "error creating socket: %m");
+        exit(EXIT_FAILURE);
     }
 
     /* Set up socket os that it is a reusable address */
     r  = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const void *)&flags, sizeof flags);
     if (r != 0) {
-	perror("error setting re-use addr option");
-	abort();
+    syslog(LOG_ERR, "error setting re-use addr option: %m");
+        exit(EXIT_FAILURE);
     }
 
     /* Ensure the socket is non-blocking like node expects */
     r = fcntl(s, F_SETFL, O_NONBLOCK);
     if (r == -1) {
-	perror("error setting non-blocking");
-	abort();
+    syslog(LOG_ERR, "error setting non-blocking: %m");
+        exit(EXIT_FAILURE);
     }
 
     /* Set up the socket address structure */
@@ -441,15 +508,15 @@ create_socket(struct in_addr addr, uint16_t port, int backlog)
     r = bind(s, (struct sockaddr *) &sockaddr, sizeof sockaddr);
 
     if (r != 0) {
-	perror("error binding socket");
-	abort();
+    syslog(LOG_ERR, "error binding socket: %m");
+    exit(EXIT_FAILURE);
     }
 
     r = listen(s, backlog);
 
     if (r != 0) {
-	perror("error listening on socket");
-	abort();
+    syslog(LOG_ERR, "error listening on socket: %m");
+    exit(EXIT_FAILURE);
     }
 
     return s;
@@ -460,14 +527,14 @@ lookup_fd_by_name(const char *name)
 {
     int i;
     for (i = 0; i < num_fds; i++) {
-	struct fd *fd = &fds[i];
-	if (strcmp(name, fd->name) == 0) {
-	    break;
-	}
+    struct fd *fd = &fds[i];
+    if (strcmp(name, fd->name) == 0) {
+        break;
+    }
     }
 
     if (i == num_fds) {
-	i = -1;
+    i = -1;
     }
 
     return i;
@@ -480,20 +547,20 @@ update_command_line(void)
     int i, r;
 
     for (i = 0; i < num_fds; i++) {
-	struct fd *fd = &fds[i];
+    struct fd *fd = &fds[i];
 
-	r = snprintf(fd_arg, sizeof fd_arg, FD_PREFIX "%s,%d", fd->name, fd->fd);
-	if (r >= sizeof fd_arg) {
-	    fprintf(stderr, "Unable to format fd argument (%d - %zd)\n", r, sizeof fd_arg);
-	    abort();
-	}
+    r = snprintf(fd_arg, sizeof fd_arg, FD_PREFIX "%s,%d", fd->name, fd->fd);
+    if (r >= sizeof fd_arg) {
+        syslog(LOG_INFO, "Unable to format fd argument (%d - %zd)", r, sizeof fd_arg);
+        exit(EXIT_FAILURE);
+    }
 
-	r = str_concat(server_command, fd_arg, sizeof server_command);
+    r = str_concat(server_command, fd_arg, sizeof server_command);
 
-	if (r == -1) {
-	    fprintf(stderr, "server command buffer too small\n");
-	    abort();
-	}
+    if (r == -1) {
+        syslog(LOG_INFO, "server command buffer too small");
+        exit(EXIT_FAILURE);
+    }
     }
 }
 
@@ -505,8 +572,8 @@ notify_server(void)
     r = kill(current_server, SIGUSR1);
 
     if (r != 0) {
-	perror("couldn't kill existing server");
-	abort();
+    syslog(LOG_ERR, "couldn't kill existing server: %m");
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -518,8 +585,8 @@ terminate_server(void)
     r = kill(current_server, SIGTERM);
 
     if (r != 0) {
-	perror("couldn't kill existing server");
-	abort();
+    syslog(LOG_ERR, "couldn't kill existing server: %m");
+    exit(EXIT_FAILURE);
     }
 }
 
@@ -533,8 +600,8 @@ spawn_server(void)
     struct timeval new_time;
     (void) gettimeofday(&new_time, NULL);
     if (fast_spawn_protect && new_time.tv_sec == last_spawn_time.tv_sec) {
-	fprintf(stderr, "Spawning too fast!\n");
-	exit(EXIT_FAILURE);
+    syslog(LOG_ERR, "Spawning too fast!");
+    exit(EXIT_FAILURE);
     }
     last_spawn_time = new_time;
 
@@ -542,14 +609,15 @@ spawn_server(void)
     pid = fork();
 
     if (pid == 0) {
-	/* Child process */
-	(void) execl("/bin/sh", "/bin/sh", "-c", server_command, NULL);
+    /* Child process */
+        syslog(LOG_ERR, "spawning server: '%s'", server_command);
+    (void) execl("/bin/sh", "/bin/sh", "-c", server_command, NULL);
 
-	perror("execl");
-	abort();
+    syslog(LOG_ERR, "execl: %m");
+        exit(EXIT_FAILURE);
     } else {
-	/* Parent process */
-	current_server = pid;
+    /* Parent process */
+    current_server = pid;
     }
 }
 
@@ -558,9 +626,8 @@ static void
 fprint_fd_socket(FILE *f, struct fd *fd)
 {
     fprintf(f, "   %s/%d: IPv%d %s:%d backlog %d\n",
-	    fd->name, fd->fd,
-	    fd->x.sock.ip_ver, inet_ntoa(fd->x.sock.addr),
-	    fd->x.sock.port, fd->x.sock.backlog);
+        fd->name, fd->fd,
+        fd->x.sock.ip_ver, inet_ntoa(fd->x.sock.addr),
+        fd->x.sock.port, fd->x.sock.backlog);
 }
 #endif
-
