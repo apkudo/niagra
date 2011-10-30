@@ -77,6 +77,7 @@ static struct fd fds[MAX_FDS];
 static int num_fds;
 static pid_t current_server;
 static bool debug_mode = false;
+static bool fast_spawn_protect = false;
 static struct timeval last_singint_time;
 static struct timeval last_spawn_time;
 
@@ -531,7 +532,7 @@ spawn_server(void)
     /* if we spawn too quickly, just exit */
     struct timeval new_time;
     (void) gettimeofday(&new_time, NULL);
-    if (new_time.tv_sec == last_spawn_time.tv_sec) {
+    if (fast_spawn_protect && new_time.tv_sec == last_spawn_time.tv_sec) {
 	fprintf(stderr, "Spawning too fast!\n");
 	exit(EXIT_FAILURE);
     }
