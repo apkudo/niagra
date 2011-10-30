@@ -132,7 +132,7 @@ main(int argc, char **argv)
     spawn_server();
 
     for (;;) {
-	bool respawn = true;
+	bool respawn = !debug_mode;
 	pid = waitpid(-1, &status, 0);
 
 	if (pid == -1) {
