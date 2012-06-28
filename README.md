@@ -1,6 +1,6 @@
-# node-launcherd
+# niagra
 
-node-launcherd is there to launch, and relaunch, your node applications so that you can have *zero downtime* when doing upgrading your server.
+niagra is there to launch, and relaunch, your node applications so that you can have *zero downtime* when doing upgrading your server. Based on node-launcher.
 
 ## Zero Downtime
 
