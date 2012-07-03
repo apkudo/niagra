@@ -22,7 +22,7 @@
 #include "str.h"
 
 #define OUTPUT_LOG "output.log"
-#define SYSLOG_IDENT "node-launcher"
+#define SYSLOG_IDENT "niagra"
 #define FD_PREFIX " --fd "
 #define FD_PREFIX_SIZE (sizeof FD_PREFIX)
 #define INT_STRING_LEN 10
