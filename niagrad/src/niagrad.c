@@ -1,4 +1,4 @@
-/* Copyright: Ben Leslie 2011: See LICENSE file. */
+/* Copyright: Apkudo Inc. 2012: See LICENSE file. */
 
 #include <sys/types.h>
 
