@@ -39,6 +39,9 @@
 /* Maximum number of node instances to spawn. One per core is probably good. */
 #define MAX_COPIES 10
 
+/* Maximum number of times to migrate before old servers just get killed. */
+#define MAX_MIGRATE_BACKLOG 4
+
 enum fd_type { SOCKET_FD, FILE_FD };
 
 struct fd_socket {
@@ -78,6 +81,11 @@ static void spawn_servers(void);
 static void terminate_servers(void);
 static void terminate_server(int server);
 
+static void clear_backlog_server(pid_t pid);
+static void set_backlog_server(int server, pid_t pid);
+static void terminate_last_backlog_servers(void);
+static void shift_backlog_servers(void);
+
 
 #if defined(DEBUG)
 static void fprint_fd_socket(FILE *f, struct fd *fd);
@@ -90,6 +98,7 @@ static struct fd fds[MAX_FDS];
 static int num_fds;
 static int copies = 1;
 static pid_t servers[MAX_COPIES];
+static pid_t backlog_servers[MAX_MIGRATE_BACKLOG][MAX_COPIES];
 static bool debug_mode = false;
 static bool no_respawn = false;
 static bool fast_spawn_protect = false;
