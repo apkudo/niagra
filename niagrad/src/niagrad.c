@@ -164,21 +164,24 @@ main(int argc, char **argv)
     int ch;
     int logopt = LOG_NDELAY;
 
-    while ((ch = getopt(argc, argv, "d")) != -1) {
-    switch (ch) {
-    case 'd':
-        debug_mode = true;
-        break;
-    case '?':
-    default:
-        usage();
-    }
+    while ((ch = getopt(argc, argv, "dn")) != -1) {
+        switch (ch) {
+        case 'd':
+            debug_mode = true;
+            break;
+        case 'n':
+            no_respawn = true;
+            break;
+        case '?':
+        default:
+            usage();
+        }
     }
     argc -= optind;
     argv += optind;
 
     if (argc != 1) {
-    usage();
+        usage();
     }
 
     /* If we aren't in debug mode, we need to daemonize */
