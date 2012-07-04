@@ -22,6 +22,7 @@
 #include "str.h"
 
 #define OUTPUT_LOG "output.log"
+#define STATE_DIR "/tmp"
 #define SYSLOG_IDENT "niagra"
 #define FD_PREFIX " --fd "
 #define FD_PREFIX_SIZE (sizeof FD_PREFIX)
@@ -85,6 +86,8 @@ static void clear_backlog_server(pid_t pid);
 static void set_backlog_server(int server, pid_t pid);
 static void terminate_backlog_servers(int backlog_index);
 static void shift_backlog_servers(void);
+
+static void output_state(pid_t caller);
 
 
 #if defined(DEBUG)
@@ -266,7 +269,7 @@ main(int argc, char **argv)
 
 /* SIGUSR1 migrates all servers (zero-downtime restart). */
 static void
-sigusr1_handler(int signum)
+sigusr1_handler(int signum, siginfo_t *siginfo, void *context)
 {
     pid_t from_pid = getpid();
     if (from_pid != niagra_pid) {
@@ -280,7 +283,7 @@ sigusr1_handler(int signum)
 
 /* SIGINT restarts all servers (possible-downtime restart). */
 static void
-sigint_handler(int signum)
+sigint_handler(int signum, siginfo_t *siginfo, void *context)
 {
     pid_t from_pid = getpid();
     if (from_pid != niagra_pid) {
@@ -304,7 +307,7 @@ sigint_handler(int signum)
 
 /* SIGTERM terminates all servers and exits (downtime!). */
 static void
-sigterm_handler(int signum)
+sigterm_handler(int signum, siginfo_t *siginfo, void *context)
 {
     pid_t from_pid = getpid();
     if (from_pid != niagra_pid) {
@@ -312,9 +315,23 @@ sigterm_handler(int signum)
         return;
     }
 
-    syslog(LOG_INFO, "SIGTERM: from niagra, terminate all servers & exit");
+    syslog(LOG_INFO, "SIGTERM: terminate all servers & exit");
     terminate_servers();
     exit(EXIT_FAILURE);
+}
+
+/* SIGUSR2 outputs state. */
+static void
+sigusr2_handler(int signum, siginfo_t *siginfo, void *context)
+{
+    pid_t from_pid = getpid();
+    if (from_pid != niagra_pid) {
+        syslog(LOG_ERR, "SIGUSR2: from pid %d, not niagra, doing nothing", from_pid);
+        return;
+    }
+
+    syslog(LOG_INFO, "SIGUSR2: outputting state");
+    output_state(siginfo->si_pid);
 }
 
 static void
@@ -323,27 +340,32 @@ install_signal_handlers(void)
     int r;
     struct sigaction sa;
 
-    sa.sa_handler = sigusr1_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART; /* Restart functions if interrupted by handler */
+
+    sa.sa_sigaction = sigusr1_handler;
     r = sigaction(SIGUSR1, &sa, NULL);
-
     if (r == -1) {
         syslog(LOG_ERR, "error installing handler: %m");
         exit(EXIT_FAILURE);
     }
 
-    sa.sa_handler = sigterm_handler;
+    sa.sa_sigaction = sigterm_handler;
     r = sigaction(SIGTERM, &sa, NULL);
-
     if (r == -1) {
         syslog(LOG_ERR, "error installing handler: %m");
         exit(EXIT_FAILURE);
     }
 
+    sa.sa_sigaction = sigusr2_handler;
+    r = sigaction(SIGUSR2, &sa, NULL);
+    if (r == -1) {
+        syslog(LOG_ERR, "error installing handler: %m");
+        exit(EXIT_FAILURE);
+    }
 
     if (debug_mode) {
-        sa.sa_handler = sigint_handler;
+        sa.sa_sigaction = sigint_handler;
         r = sigaction(SIGINT, &sa, NULL);
 
         if (r == -1) {
@@ -800,6 +822,32 @@ find_server(pid_t pid) {
         }
     }
     return found;
+}
+
+static void
+output_state(pid_t caller)
+{
+    FILE *state_file;
+    char state_filename[MAX_FILE_NAME];
+    int r;
+    
+    sprintf(state_filename, "%s/niagra-%d-%d.state", STATE_DIR, niagra_pid, caller);
+
+    syslog(LOG_INFO, "state outputting to %s", state_filename);
+
+    state_file = fopen(state_filename, "w");
+    fprintf(state_file, "%s" , "Some state");
+
+    fclose(state_file);
+
+    syslog(LOG_INFO, "state outputted to %s, signalling caller %d", state_filename, caller);
+
+    r = kill(caller, SIGUSR2);
+
+    if (r != 0) {
+        syslog(LOG_ERR, "couldn't signal output state caller %d: %m", caller);
+    }
+
 }
 
 #if defined(DEBUG)
