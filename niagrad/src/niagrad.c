@@ -235,7 +235,8 @@ main(int argc, char **argv)
             case 126:
             case 127:
                 /* we treat 126 and 127 as errors from the shell itself */
-                syslog(LOG_ERR, "process exited with shell error: pid: %ld status: %d", (long) pid, WEXITSTATUS(status));
+                syslog(LOG_ERR, "process exited with shell error: pid: %ld status: %d", (long) pid,
+                       WEXITSTATUS(status));
                 respawn = false;
                 break;
             default:
@@ -262,13 +263,11 @@ main(int argc, char **argv)
 
             /* Backlog process exited, find it and clear it. */
             clear_backlog_server(pid);
-
         }
     }
 
     return EXIT_FAILURE;
 }
-
 
 /* SIGUSR1 migrates all servers (zero-downtime restart). */
 static void
@@ -412,7 +411,8 @@ parse_config_file(void)
 
             r = str_split(command_value[1], ' ', socket_parts, NUM_SOCK_OPTIONS);
             if (r != NUM_SOCK_OPTIONS) {
-                syslog(LOG_INFO, "Incorrect number of fields (%d) for socket options. Should be %d fields.", r, NUM_SOCK_OPTIONS);
+                syslog(LOG_INFO, "Incorrect number of fields (%d) for socket options. Should be %d fields.",
+                       r, NUM_SOCK_OPTIONS);
                 n = -1;
                 break;
             }
@@ -478,9 +478,11 @@ parse_config_file(void)
         } else if (strcmp(command_value[0], "copies") == 0) {
             int c = atoi(command_value[1]);
             if (c <= 0) {
-                syslog(LOG_INFO, "WARNING: Got invalid copies command: '%s', defaulting to 1", command_value[1]);
+                syslog(LOG_INFO, "WARNING: Got invalid copies command: '%s', defaulting to 1",
+                       command_value[1]);
             } else if (c > MAX_COPIES) {
-                syslog(LOG_INFO, "WARNING: copies command %d exceeds maximum of %d: defaulting to %d", c, MAX_COPIES, MAX_COPIES);
+                syslog(LOG_INFO, "WARNING: copies command %d exceeds maximum of %d: defaulting to %d", c,
+                       MAX_COPIES, MAX_COPIES);
                 copies = MAX_COPIES;
             } else {
                 copies = c;
@@ -649,14 +651,17 @@ terminate_last_backlog_servers(void)
         pid = dead_servers[i];
 
         if (pid > 0) {
-            syslog(LOG_INFO, "very old server %d (pid %d) at backlog position %d going down", i, pid, last_backlog_position);
+            syslog(LOG_INFO, "very old server %d (pid %d) at backlog position %d going down", i, pid,
+                   last_backlog_position);
 
             r = kill(pid, SIGTERM);
 
             if (r != 0) {
-                syslog(LOG_ERR, "couldn't kill very old server %d (pid %d) at backlog position %d: %m", i, pid, last_backlog_position);
+                syslog(LOG_ERR, "couldn't kill very old server %d (pid %d) at backlog position %d: %m", i,
+                       pid, last_backlog_position);
             } else {
-                syslog(LOG_INFO, "very old server %d (pid %d) at backlog position %d successfully terminated", i, pid, last_backlog_position);
+                syslog(LOG_INFO, "very old server %d (pid %d) at backlog position %d successfully terminated",
+                       i, pid, last_backlog_position);
             }
 
         }
