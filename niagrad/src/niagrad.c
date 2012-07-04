@@ -154,12 +154,7 @@ daemonize(void)
             syslog(LOG_ALERT, "unable to become session leader: %m");
             exit(EXIT_FAILURE);
         }
-#if 0
-        if (chdir("/") != 0) {
-            syslog(LOG_ALERT, "unable to change directory: %m");
-            exit(EXIT_FAILURE);
-        }
-#endif
+
     } else {
         exit(EXIT_SUCCESS);
     }
