@@ -830,7 +830,7 @@ output_state(pid_t caller)
     FILE *state_file;
     char state_filename[MAX_FILE_NAME];
     int r;
-    
+
     sprintf(state_filename, "%s/niagra-%d-%d.state", STATE_DIR, niagra_pid, caller);
 
     syslog(LOG_INFO, "state outputting to %s", state_filename);
