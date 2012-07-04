@@ -1,0 +1,58 @@
+#!/bin/sh
+
+show_usage()
+{
+    echo "Usage: niagra command [options]"
+    echo "   commands:"
+    echo "       Start niagra daemon with config_file, with optional debug (-d)"
+    echo "           start [-d] config_file"
+    echo "       List running niagrad daemons"
+    echo "           list"
+    echo "       Migrate a niagra instance (zero-downtime restart).  No pid required if only one daemon running"
+    echo "           migrate [pid]"
+    echo "       Terminate a niagra instance.  No pid required if only one daemon running"
+    echo "           terminate [pid]"
+    echo "       Show state of existing niagra daemon. No pid required if only one daemon running"
+    echo "           state [pid]"
+    exit 1
+}
+
+command=$1
+debug=0
+config_file=""
+pid=""
+
+command_start()
+{
+    echo "start"
+}
+
+
+if [ $command = "start" ]; then
+    if [ $2 = "-d" ]; then
+        debug=1
+        config_file=$3
+    else
+        config_file=$2
+    fi
+    if [ -z $config_file ]; then
+        show_usage
+    fi
+    config_file=$2
+    command_start
+
+elif [ $command = "list" ]; then
+    echo "listing"
+
+elif [ $command = "migrate" ]; then
+    echo "migrate"
+
+elif [ $command = "terminate" ]; then
+    echo "terminate"
+
+elif [ $command = "state" ]; then
+    echo "state"
+
+else
+    show_usage
+fi
