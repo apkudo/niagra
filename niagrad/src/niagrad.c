@@ -83,7 +83,7 @@ static void terminate_server(int server);
 
 static void clear_backlog_server(pid_t pid);
 static void set_backlog_server(int server, pid_t pid);
-static void terminate_last_backlog_servers(void);
+static void terminate_backlog_servers(int backlog_index);
 static void shift_backlog_servers(void);
 
 
@@ -639,31 +639,29 @@ set_backlog_server(int server, pid_t pid)
 
 /* Terminate all final backlogged servers. */
 static void
-terminate_last_backlog_servers(void)
+terminate_backlog_servers(int backlog_index)
 {
     int i, r;
     pid_t pid;
-    int last_backlog_position = MAX_MIGRATE_BACKLOG - 1;
-    pid_t *dead_servers = backlog_servers[last_backlog_position];
+    pid_t *dead_servers = backlog_servers[backlog_index];
 
     for (i = 0; i < copies; i++) {
 
         pid = dead_servers[i];
 
         if (pid > 0) {
-            syslog(LOG_INFO, "very old server %d (pid %d) at backlog position %d going down", i, pid,
-                   last_backlog_position);
+            syslog(LOG_INFO, "old server %d (pid %d) at backlog position %d going down", i, pid,
+                   backlog_index);
 
             r = kill(pid, SIGTERM);
 
             if (r != 0) {
-                syslog(LOG_ERR, "couldn't kill very old server %d (pid %d) at backlog position %d: %m", i,
-                       pid, last_backlog_position);
+                syslog(LOG_ERR, "couldn't kill old server %d (pid %d) at backlog position %d: %m", i,
+                       pid, backlog_index);
             } else {
-                syslog(LOG_INFO, "very old server %d (pid %d) at backlog position %d successfully terminated",
-                       i, pid, last_backlog_position);
+                syslog(LOG_INFO, "old server %d (pid %d) at backlog position %d successfully terminated",
+                       i, pid, backlog_index);
             }
-
         }
 
         dead_servers[i] = 0;
@@ -708,7 +706,7 @@ migrate_servers(void)
     syslog(LOG_INFO, "migrating all servers");
 
     /* Kill last backlog servers and shift all remaining backlog servers. */
-    terminate_last_backlog_servers();
+    terminate_backlog_servers(MAX_MIGRATE_BACKLOG - 1);
     shift_backlog_servers();
  
     /* Spawn the new server and migrate the old server to front of backlog. */
@@ -749,6 +747,10 @@ terminate_servers(void)
     int i;
     for (i = 0; i < copies; i++) {
         terminate_server(i);
+    }
+
+    for (i = 0; i < MAX_MIGRATE_BACKLOG; i++) {
+        terminate_backlog_servers(i);
     }
 
     syslog(LOG_INFO, "completed terminating all servers");
