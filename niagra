@@ -2,18 +2,16 @@
 
 show_usage()
 {
-    echo "Usage: niagra command [options]"
+    echo "Usage: niagra [command]"
     echo "   commands:"
-    echo "       Start niagra daemon with config_file, with optional debug (-d)"
-    echo "           start [-d] config_file"
-    echo "       List running niagrad daemons"
-    echo "           list"
-    echo "       Migrate a niagra instance (zero-downtime restart).  No pid required if only one daemon running"
-    echo "           migrate [pid]"
-    echo "       Terminate a niagra instance.  No pid required if only one daemon running"
-    echo "           terminate [pid]"
-    echo "       Show state of existing niagra daemon. No pid required if only one daemon running"
-    echo "           state [pid]"
+    echo "       start [-d] config_file     Start niagra instance with config file."
+    echo "       list                       List running niagra instances."
+    echo "       migrate [pid]              Migrate a niagra instance. Zero-downtime restart of all nodes."
+    echo "       terminate [pid]            Terminate a niagra instance. Full-downtime kill of all nodes."
+    echo "       state [pid]                Output state of existing niagra instance."
+    echo "   options:"
+    echo "       -d                         Debug mode. niagra instance will not be daemonized."
+    echo "       pid                        pid of niagra instance. Not required if only one instance is executing."
     exit 1
 }
 
