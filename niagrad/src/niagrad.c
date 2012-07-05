@@ -68,6 +68,8 @@ struct fd {
 
 static void parse_config_file(void);
 static void update_command_line(void);
+static char * get_parent_dir(const char *file);
+static void change_dir(void);
 
 static void create_sockets(void);
 static int create_socket(struct in_addr addr, uint16_t port, int backlog);
@@ -96,6 +98,7 @@ static void fprint_fd_socket(FILE *f, struct fd *fd);
 
 static pid_t niagra_pid;
 static const char *config_file_name;
+static const char *config_file_dir;
 static char server_command[MAX_COMMAND_LINE];
 static struct fd fds[MAX_FDS];
 static int num_fds;
@@ -163,6 +166,33 @@ daemonize(void)
     }
 }
 
+static char *
+get_parent_dir(const char *file)
+{
+    char *r, *c = strrchr(file, '/');
+    if (c == NULL) {
+        r = ".";
+    } else if (c == file) {
+        r = "/";
+    } else {
+        r = malloc(strlen(file) + 1);
+        strcpy(r, file);
+        c = strrchr(r, '/');
+        *c = '\0';
+    }
+    return r;
+}
+
+/* Change to location of config file. */
+static void
+change_dir(void)
+{
+    if (chdir(config_file_dir) != 0) {
+        syslog(LOG_ALERT, "unable to change directory: %m");
+        exit(EXIT_FAILURE);
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -191,12 +221,12 @@ main(int argc, char **argv)
         usage();
     }
 
-    /* If we aren't in debug mode, we need to daemonize */
+    config_file_name = argv[0];
+    config_file_dir = get_parent_dir(config_file_name);
+
     if (!debug_mode) {
         daemonize();
     }
-
-    config_file_name = argv[0];
 
     if (debug_mode) {
         logopt |= LOG_PERROR;
@@ -209,6 +239,8 @@ main(int argc, char **argv)
 
     install_signal_handlers();
     parse_config_file();
+    change_dir();
+
     create_sockets();
 
     if (str_isempty(server_command)) {
@@ -408,7 +440,6 @@ parse_config_file(void)
             break;
         }
         command_value[1] = str_strip(command_value[1], ' ');
-
         if (strcmp(command_value[0], "command") == 0) {
             if (!str_isempty(server_command)) {
                 syslog(LOG_INFO, "command already set.");
