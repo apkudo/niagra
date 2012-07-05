@@ -6,50 +6,195 @@ show_usage()
     echo "   commands:"
     echo "       start [-d] config_file     Start niagra instance with config file."
     echo "       list                       List running niagra instances."
+    echo "       count                      Count of running niagra instances."
     echo "       migrate [pid]              Migrate a niagra instance. Zero-downtime restart of all nodes."
     echo "       terminate [pid]            Terminate a niagra instance. Full-downtime kill of all nodes."
     echo "       state [pid]                Output state of existing niagra instance."
     echo "   options:"
     echo "       -d                         Debug mode. niagra instance will not be daemonized."
-    echo "       pid                        pid of niagra instance. Not required if only one instance is executing."
+    echo "       pid                        pid of niagra instance. Command applies to all instances if not provided."
     exit 1
 }
 
 command=$1
-debug=0
+debug=""
 config_file=""
+instances=""
+instance_count=0
+pids=""
 pid=""
+signal=""
+signalled=0
 
-command_start()
+parse_start_command_args()
 {
-    echo "start"
-}
-
-
-if [ $command = "start" ]; then
-    if [ $2 = "-d" ]; then
-        debug=1
+    if [ "$2" == "-d" ]; then
+        if [ $# != 3 ]; then
+            show_usage
+        fi
+        debug="-d"
         config_file=$3
     else
+        if [ $# != 2 ]; then
+            show_usage
+        fi
         config_file=$2
     fi
     if [ -z $config_file ]; then
         show_usage
     fi
-    config_file=$2
+}
+
+parse_no_command_args()
+{
+    if [ $# != 1 ]; then
+        show_usage
+    fi
+}
+
+parse_pid_command_args()
+{
+    if [ $# -gt 2 ]; then
+        show_usage
+    fi
+    if [ $# == 2 ]; then
+        pid=$2
+    fi
+}
+
+find_instances()
+{
+    instances=`ps aux | grep '[n]iagrad' | grep -v grep | grep -v 'niagra start'`
+    if [ -n "$instances" ]; then
+        instance_count=`echo "$instances" | wc -l`
+    else
+        instance_count=0
+    fi
+    pids=`ps aux | grep '[n]iagrad' | grep -v grep | grep -v 'niagra start' | awk '{print $2}'`
+}
+
+find_pid()
+{
+    if [ $pid ]; then
+        found=0
+        for p in $pids
+        do
+            if [ $pid == $p ]; then
+                found=1
+                break
+            fi
+        done
+        if [ $found == 0 ]; then
+            echo "niagra instance with pid $pid not found"
+            exit 1
+        fi
+    else
+        pid=$pids
+    fi
+    if [ -z "$pid" ]; then
+        echo "no niagra instances found"
+        exit 1
+    fi
+}
+
+do_signal() {
+    find_instances
+    find_pid
+    do_pid_signal $pid
+}
+
+do_pid_signal() {
+    cmd="kill -$signal $1"
+    $cmd
+}
+
+wait_signalled() {
+    while :
+    do
+        if [ $signalled == 1 ]; then
+            break
+        fi
+    done
+    signalled=0
+}
+
+on_signalled() {
+    signalled=1
+}
+
+command_start()
+{
+    cmd="niagrad $debug $config_file"
+    $cmd
+}
+
+command_list()
+{
+    find_instances
+    if [ -n "$instances" ]; then
+        echo "$instances"
+    fi
+}
+
+command_count()
+{
+    find_instances
+    echo $instance_count
+}
+
+command_migrate()
+{
+    signal=USR1
+    do_signal
+}
+
+command_terminate()
+{
+    signal=TERM
+    do_signal
+}
+
+command_state()
+{
+    signal=USR2
+    trap "on_signalled" SIGUSR2
+    find_instances
+    find_pid
+    pids=$pid
+    for p in $pids
+    do
+        pid=$p
+        do_pid_signal $pid
+        wait_signalled
+        cmd="cat /tmp/niagra-$pid-$$.state"
+        $cmd
+        echo ""
+    done
+}
+
+if [ $command = "start" ]; then
+    parse_start_command_args $@
     command_start
 
-elif [ $command = "list" ]; then
-    echo "listing"
+elif [ "$command" == "list" ]; then
+    parse_no_command_args $@
+    command_list
 
-elif [ $command = "migrate" ]; then
-    echo "migrate"
+elif [ "$command" == "count" ]; then
+    parse_no_command_args $@
+    command_count
 
-elif [ $command = "terminate" ]; then
-    echo "terminate"
+elif [ "$command" == "migrate" ]; then
+    parse_pid_command_args $@
+    command_migrate
 
-elif [ $command = "state" ]; then
-    echo "state"
+elif [ "$command" == "terminate" ]; then
+    parse_pid_command_args $@
+    command_terminate
+
+elif [ "$command" == "state" ]; then
+    parse_pid_command_args $@
+    command_state
 
 else
     show_usage
