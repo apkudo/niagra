@@ -8,6 +8,7 @@ show_usage()
     echo "       list                       List running niagra instances."
     echo "       count                      Count of running niagra instances."
     echo "       migrate [pid]              Migrate a niagra instance. Zero-downtime restart of all nodes."
+    echo "       restart [pid]              Restart a niagra instance. Possible-downtime restart of all nodes."
     echo "       terminate [pid]            Terminate a niagra instance. Full-downtime kill of all nodes."
     echo "       state [pid]                Output state of existing niagra instance."
     echo "   options:"
@@ -100,7 +101,12 @@ find_pid()
 do_signal() {
     find_instances
     find_pid
-    do_pid_signal $pid
+    pids=$pid
+    for p in $pids
+    do
+        pid=$p
+        do_pid_signal $pid
+    done
 }
 
 do_pid_signal() {
@@ -148,6 +154,12 @@ command_migrate()
     do_signal
 }
 
+command_restart()
+{
+    signal=INT
+    do_signal
+}
+
 command_terminate()
 {
     signal=TERM
@@ -187,6 +199,10 @@ elif [ "$command" == "count" ]; then
 elif [ "$command" == "migrate" ]; then
     parse_pid_command_args $@
     command_migrate
+
+elif [ "$command" == "restart" ]; then
+    parse_pid_command_args $@
+    command_restart
 
 elif [ "$command" == "terminate" ]; then
     parse_pid_command_args $@
