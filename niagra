@@ -5,12 +5,12 @@ show_usage()
     echo "Usage: niagra [command]"
     echo "   commands:"
     echo "       start [-d] config_file     Start niagra instance with config file."
-    echo "       list                       List running niagra instances."
+    echo "       list | ls                  List running niagra instances."
     echo "       count                      Count of running niagra instances."
-    echo "       migrate [pid]              Migrate a niagra instance. Zero-downtime restart of all nodes."
+    echo "       migrate [pid] | mg [pid]   Migrate a niagra instance. Zero-downtime restart of all nodes."
     echo "       restart [pid]              Restart a niagra instance. Possible-downtime restart of all nodes."
     echo "       terminate [pid]            Terminate a niagra instance. Full-downtime kill of all nodes."
-    echo "       state [pid]                Output state of existing niagra instance."
+    echo "       state [pid] | st [pid]     Output state of existing niagra instance."
     echo "   options:"
     echo "       -d                         Debug mode. niagra instance will not be daemonized."
     echo "       pid                        pid of niagra instance. Command applies to all instances if not provided."
@@ -184,11 +184,11 @@ command_state()
     done
 }
 
-if [ $command = "start" ]; then
+if [ "$command" == "start" ]; then
     parse_start_command_args $@
     command_start
 
-elif [ "$command" == "list" ]; then
+elif [ "$command" == "list" ] || [ "$command" == "ls" ]; then
     parse_no_command_args $@
     command_list
 
@@ -196,7 +196,7 @@ elif [ "$command" == "count" ]; then
     parse_no_command_args $@
     command_count
 
-elif [ "$command" == "migrate" ]; then
+elif [ "$command" == "migrate" ] || [ "$command" == "mg" ]; then
     parse_pid_command_args $@
     command_migrate
 
@@ -208,7 +208,7 @@ elif [ "$command" == "terminate" ]; then
     parse_pid_command_args $@
     command_terminate
 
-elif [ "$command" == "state" ]; then
+elif [ "$command" == "state" ] || [ "$command" == "st" ]; then
     parse_pid_command_args $@
     command_state
 
