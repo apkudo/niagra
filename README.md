@@ -1,6 +1,8 @@
 # niagra
 
-niagra is there to launch, relaunch, and migrate your node applications so that you can have *zero downtime* when upgrading.
+niagra is there to launch, relaunch, and migrate your node applications so that you can have:
+ * multiple node instances serving the same application (generally one per core).
+ * *zero downtime* when upgrading.
 
 ## Zero Downtime
 
