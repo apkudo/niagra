@@ -1,6 +1,6 @@
 # niagra
 
-niagra is there to launch, and relaunch, your node applications so that you can have *zero downtime* when doing upgrading your server. Based on node-launcher.
+niagra is there to launch, relaunch, and migrate your node applications so that you can have *zero downtime* when doing upgrading your server.
 
 ## Zero Downtime
 
@@ -8,34 +8,54 @@ What exactly is *zero downtime*? Well, naively, when you upgrade your server you
 
 ## Design
 
-node-launcherd is a small C program which enables *zero downtime* servers. When it starts it will bind to any configured server ports. It will then `fork` and `exec` the actual server, passing the open socket as a file descriptor.
+*niagrad* is a small C program which enables *zero downtime* servers. When it starts it will bind to any configured server ports. It will then `fork` and `exec` the actual server, passing the open socket as a file descriptor.
 
-When instructed (by a signal), node-launcherd will shutdown any existing servers it has spawned, and respawn new servers, passing them the existing open socket.
+When instructed (by a signal), niagrad will shutdown any existing servers it has spawned, and respawn new servers, passing them the existing open socket. This is known as a migration.
 
-node-launcherd isn't magic and relies on the servers it is spawning to cooperate. Firstly, these servers need to handle receiving a socket as an open file-descriptor, rather than creating and binding and listening to the socket themselves.
+niagrad isn't magic and relies on the servers it is spawning to cooperate. Firstly, these servers need to handle receiving a socket as an open file-descriptor, rather than creating and binding and listening to the socket themselves.
 
-Secondly, the server must play nice when node-launcherd instructs it to shutdown. When the server receives a shutdown signal from node-launcherd, it should stop accepting new connection on any sockets that node-launcherd passed to it.
+Secondly, the server must play nice when niagrad instructs it to shutdown. When the server receives a shutdown signal from niagrad, it should stop accepting new connection on any sockets that niagra passed to it.
 
-The timing isn't critical, if it doesn't stop accepting new connections the old server will simply race with the new server to accept any new connections coming in. If an old-server is misbehaving it is always possible to manually destroy it with `kill`; this will affect any existing connections, but new connections on the new server will be unaffected.
+The timing isn't critical, if it doesn't stop accepting new connections the old server will simply race with the new server to accept any new connections coming in. If an old server is misbehaving it will be placed on a backlog list; if it does not gracefully die within 3 migration requests, it will be terminated. It is also always possible to manually destroy it with `kill`; this will affect any existing connections, but new connections on the new server will be unaffected.
+
+A management utility, *niagra*, is used to interact with and manage niagrad.
 
 ## Other features
 
-In addition to providing the zero downtime functionality, node-launcherd provides a few other useful things. node-launcherd, when run with root privileges, can obtain resources (such as privileged ports, and secret key files), and then drop privileges before launching the server itself.
+In addition to providing the zero downtime functionality, niagra provides a few other useful things. niagra, when run with root privileges, can obtain resources (such as privileged ports, and secret key files), and then drop privileges before launching the server itself.
 
-node-launcherd is also able to spawn multiple copies of the server when necessary. This might be useful when running servers on a multi-core machine. With this approach each spawned process will intentionally race on `accept`. The underlying operating system kernel will pick the winner of the race. Your mileage may vary depending on your kernel as to how scalable this approach is.
+niagra is also able to spawn multiple copies of the server when necessary. This might be useful when running servers on a multi-core machine. With this approach each spawned process will intentionally race on `accept`. The underlying operating system kernel will pick the winner of the race. Your mileage may vary depending on your kernel as to how scalable this approach is.
 
-node-launcherd also monitors the running process and is able to respawn a server process if it terminates unexpectedly. 
+niagra also monitors the running process and is able to respawn a server process if it terminates unexpectedly.
 
-## Usage
 
-node-launcherd is designed to run indefinitely. You system's daemon management tool (e.g: launchd, init, etc), should be used to manage node-launcherd's life-cycle.
+## niagra usage
 
-    $ node-launcherd [ -d ] config
+*niagra* is a utility to manage niagrad instances. Usage is as follows:
 
-You normally want to run node-launcherd with root privileges.
+Commands:
+ * start [-d] config_file [log_file]: Start niagra instance with config file and optional log file.
+ * list | ls:  List running niagra instances.
+ * count: Count of running niagra instances.
+ * migrate [pid] | mg [pid]: Migrate a niagra instance. Zero-downtime restart of all nodes.
+ * restart [pid]: Restart a niagra instance. Possible-downtime restart of all nodes.
+ * terminate [pid]: Terminate a niagra instance. Full-downtime kill of all nodes.
+ * state [pid] | st [pid]: Output state of existing niagra instance.
 
-If `-d` is passed, then node-launcherd will run in debug mode, and will not daemonize. In this case servers that have been started by
-node-launcherd will be able to print to standard-output and standard-error.
+Options:
+ * -d: Debug mode. niagra instance will not be daemonized.
+ * pid: pid of niagra instance. Command applies to all instances if not provided.
+
+
+## niagrad Usage
+
+niagra is designed to run indefinitely. You system's daemon management tool (e.g: launchd, init, etc), should be used to manage niagra's life-cycle.
+
+    $ niagrad [ -d ] config [ logfile ]
+
+You normally want to run niagrad with root privileges.
+
+If `-d` is passed, then niagrad will run in debug mode, and will not daemonize. In this case servers that have been started by niagra will be able to print to standard-output and standard-error.
 
 The config file is a simple plain text format. There must be exactly one `command` line. `user` and `copies` are optional, with a maximum of one. There should be one or more `socket` lines. (Strictly speaking none are needed, however these somewhat defeats the purpose!). Zero or more `file` lines are allowed.
 
@@ -45,12 +65,18 @@ copies: n
 socket: name [4|6] ip_addr port backlog
 file: name /path/ flags
 
-node-launcherd listens for SIGUSR1 signals. When it receives SIGUSR1 it will start the reload logic. This will restart all the servers with the zero downtime logic as described above. If node-launcherd receives
-a SIGTERM it will gracefully attempt to shutdown servers.
+All relative paths are relative to the location of the config file.
+
+niagrad implements the following signal interface:
+
+ * SIGUSR1: migrate all nodes (zero-downtime restart)
+ * SIGINT: restart all nodes (possible-downtime restart)
+ * SIGTERM: terminate all nodes (complete downtime)
+ * SIGUSR2: write niagra state to file /tmp/niagra-{niagrad-pid}-{requester-pid}.state
 
 ## Server interface
 
-Servers spawned by node-launcherd must be ready to follow the interface provided.
+Servers spawned by niagra must be ready to follow the interface provided.
 
 This is quite simple. On server launch, additional command line arguments will be provided in the form `--fd <name>,<fd>`. Each of these signifies an open file descriptor passed to the server which can then be used.
 
@@ -65,5 +91,6 @@ Not everything documented is currently actually implemented. The following is no
  * 'file' option
  * IPv6 sockets
  * dropping privileges
- * multiple server instances
- * daemonize in non-debug mode
+ * express plugin
+ * alerts via email
+ * defaulting copies to the number cores
