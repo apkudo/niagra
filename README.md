@@ -73,7 +73,7 @@ All relative paths are relative to the location of the config file.
 
 niagrad implements the following signal interface:
 
- * SIGUSR1: migrate all nodes (zero-downtime restart)
+ * SIGUSR1: migrate all nodes (zero-downtime restart). This results in a SIGUSR2 to node instances, as described in the below server interface.
  * SIGINT: restart all nodes (possible-downtime restart)
  * SIGTERM: terminate all nodes (complete downtime)
  * SIGUSR2: write niagra state to file /tmp/niagra-{niagrad-pid}-{requester-pid}.state
@@ -86,7 +86,7 @@ This is quite simple. On server launch, additional command line arguments will b
 
 Each socket file descriptor is set as non-blocking, so in node.js can be directly passed to listen({ fd: *fd* }).
 
-The server must register to handle SIGUSR1 signals. Once this signal is received the server should not `accept` any more connections on provided sockets.
+The server must register to handle SIGUSR2 signals. Once this signal is received the server should not `accept` any more connections on provided sockets.
 
 ## TODO
 
