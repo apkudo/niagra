@@ -63,11 +63,11 @@ If `-d` is passed, then niagrad will run in debug mode, and will not daemonize. 
 
 The config file is a simple plain text format. There must be exactly one `command` line. `user` and `copies` are optional, with a maximum of one. There should be one or more `socket` lines. (Strictly speaking none are needed, however this somewhat defeats the purpose!). Zero or more `file` lines are allowed.
 
-command: command-to-run
-user: username
-copies: n
-socket: name [4|6] ip_addr port backlog
-file: name /path/ flags
+    command: command-to-run
+    user: username
+    copies: n
+    socket: name [4|6] ip_addr port backlog
+    file: name /path/ flags
 
 All relative paths are relative to the location of the config file.
 
