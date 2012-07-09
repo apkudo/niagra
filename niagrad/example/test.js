@@ -5,7 +5,7 @@ var server = http.createServer(helloWorld)
 
 function sigusr2() {
     console.log('[' + pid + ']', 'Got SIGUSR2, connection count ' + server.connections)
-    /* Stop accepting connection on this server, we will eventually
+    /* Stop accepting connections on this server, we will eventually
        exit when there is no more work to do */
     server.close()
 
