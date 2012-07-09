@@ -33,6 +33,8 @@ niagra also monitors the running process and is able to respawn a server process
 
 *niagra* is a utility to manage niagrad instances. Usage is as follows:
 
+    $ niagra [ command ] [ options ]
+
 Commands:
  * start [-d] config_file [log_file]: Start niagra instance with config file and optional log file.
  * list | ls:  List running niagra instances.
