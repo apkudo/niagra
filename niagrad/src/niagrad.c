@@ -21,7 +21,6 @@
 
 #include "str.h"
 
-#define OUTPUT_LOG "output.log"
 #define STATE_DIR "/tmp"
 #define SYSLOG_IDENT "niagra"
 #define FD_PREFIX " --fd "
@@ -91,7 +90,6 @@ static void shift_backlog_servers(void);
 
 static void output_state(pid_t caller);
 
-
 #if defined(DEBUG)
 static void fprint_fd_socket(FILE *f, struct fd *fd);
 #endif
@@ -99,6 +97,7 @@ static void fprint_fd_socket(FILE *f, struct fd *fd);
 static pid_t niagra_pid;
 static const char *config_file_name;
 static const char *config_file_dir;
+static const char *config_logfile;
 static char server_command[MAX_COMMAND_LINE];
 static struct fd fds[MAX_FDS];
 static int num_fds;
@@ -114,7 +113,7 @@ static struct timeval last_spawn_time;
 static void
 usage(void)
 {
-    printf("niagrad: [-d] config\n");
+    printf("niagrad: [-d] [-n] config [logfile]\n");
     exit(EXIT_FAILURE);
 }
 
@@ -142,7 +141,7 @@ daemonize(void)
             exit(EXIT_FAILURE);
         }
 
-        fd = open(OUTPUT_LOG, O_WRONLY | O_CREAT | O_APPEND, 0666);
+        fd = open(config_logfile, O_WRONLY | O_CREAT | O_APPEND, 0666);
         if (fd != STDOUT_FILENO) {
             syslog(LOG_ALERT, "Expected file to be opened with fd %d, not %d", STDOUT_FILENO, fd);
             exit(EXIT_FAILURE);
@@ -217,20 +216,24 @@ main(int argc, char **argv)
     argc -= optind;
     argv += optind;
 
-    if (argc != 1) {
+    if (argc != 1 && argc != 2) {
         usage();
     }
 
     config_file_name = argv[0];
     config_file_dir = get_parent_dir(config_file_name);
 
+    if (argc == 2) {
+        config_logfile = argv[1];
+    } else {
+        config_logfile = "niagra.log";
+    }
+
     if (!debug_mode) {
         daemonize();
     }
 
-    if (debug_mode) {
-        logopt |= LOG_PERROR;
-    }
+    logopt |= LOG_PERROR;
 
     openlog(SYSLOG_IDENT, logopt, LOG_DAEMON);
 
@@ -439,7 +442,9 @@ parse_config_file(void)
             n = -1;
             break;
         }
+
         command_value[1] = str_strip(command_value[1], ' ');
+
         if (strcmp(command_value[0], "command") == 0) {
             if (!str_isempty(server_command)) {
                 syslog(LOG_INFO, "command already set.");
@@ -454,6 +459,7 @@ parse_config_file(void)
                 n = -1;
                 break;
             }
+
         } else if (strcmp(command_value[0], "socket") == 0) {
             struct fd *fd;
 

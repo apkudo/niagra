@@ -4,22 +4,23 @@ show_usage()
 {
     echo "Usage: niagra [command]"
     echo "   commands:"
-    echo "       start [-d] config_file     Start niagra instance with config file."
-    echo "       list | ls                  List running niagra instances."
-    echo "       count                      Count of running niagra instances."
-    echo "       migrate [pid] | mg [pid]   Migrate a niagra instance. Zero-downtime restart of all nodes."
-    echo "       restart [pid]              Restart a niagra instance. Possible-downtime restart of all nodes."
-    echo "       terminate [pid]            Terminate a niagra instance. Full-downtime kill of all nodes."
-    echo "       state [pid] | st [pid]     Output state of existing niagra instance."
+    echo "       start [-d] config_file [log_file]   Start niagra instance with config file and optional log file."
+    echo "       list | ls                           List running niagra instances."
+    echo "       count                               Count of running niagra instances."
+    echo "       migrate [pid] | mg [pid]            Migrate a niagra instance. Zero-downtime restart of all nodes."
+    echo "       restart [pid]                       Restart a niagra instance. Possible-downtime restart of all nodes."
+    echo "       terminate [pid]                     Terminate a niagra instance. Full-downtime kill of all nodes."
+    echo "       state [pid] | st [pid]              Output state of existing niagra instance."
     echo "   options:"
-    echo "       -d                         Debug mode. niagra instance will not be daemonized."
-    echo "       pid                        pid of niagra instance. Command applies to all instances if not provided."
+    echo "       -d                                  Debug mode. niagra instance will not be daemonized."
+    echo "       pid                                 pid of niagra instance. Command applies to all instances if not provided."
     exit 1
 }
 
 command=$1
 debug=""
 config_file=""
+log_file=
 instances=""
 instance_count=0
 pids=""
@@ -30,16 +31,18 @@ signalled=0
 parse_start_command_args()
 {
     if [ "$2" == "-d" ]; then
-        if [ $# != 3 ]; then
+        if [ $# != 3 ] && [ $# != 4 ]; then
             show_usage
         fi
         debug="-d"
         config_file=$3
+        log_file=$4
     else
-        if [ $# != 2 ]; then
+        if [ $# != 2 ] && [ $# != 3 ]; then
             show_usage
         fi
         config_file=$2
+        log_file=$3
     fi
     if [ -z $config_file ]; then
         show_usage
@@ -130,7 +133,7 @@ on_signalled() {
 
 command_start()
 {
-    cmd="niagrad $debug $config_file"
+    cmd="niagrad $debug $config_file $log_file"
     $cmd
 }
 
