@@ -29,14 +29,14 @@ niagra is also able to spawn multiple copies of the server when necessary. This 
 niagra also monitors the running process and is able to respawn a server process if it terminates unexpectedly.
 
 
-## niagra usage
+## niagra Usage
 
 *niagra* is a utility to manage niagrad instances. Usage is as follows:
 
     $ niagra [ command ] [ options ]
 
 Commands:
- * start [-d] config_file [log_file]: Start niagra instance with config file and optional log file.
+ * *start [-d] config_file [log_file]*: Start niagra instance with config file and optional log file.
  * list | ls:  List running niagra instances.
  * count: Count of running niagra instances.
  * migrate [pid] | mg [pid]: Migrate a niagra instance. Zero-downtime restart of all nodes.
