@@ -82,7 +82,7 @@ Servers spawned by niagra must be ready to follow the interface provided.
 
 This is quite simple. On server launch, additional command line arguments will be provided in the form `--fd <name>,<fd>`. Each of these signifies an open file descriptor passed to the server which can then be used.
 
-Each socket file descriptor is set as non-blocking, so in node.js can be directly passed to listenFD.
+Each socket file descriptor is set as non-blocking, so in node.js can be directly passed to listen({ fd: *fd* }).
 
 The server must register to handle SIGUSR1 signals. Once this signal is received the server should not `accept` any more connections on provided sockets.
 
