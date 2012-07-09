@@ -34,6 +34,7 @@
 #define MAX_FDS 10
 #define MAX_FILES 10
 #define MAX_FILE_NAME 1024
+#define MAX_TIME_STRING 26
 #define NUM_SOCK_OPTIONS 5
 
 /* Maximum number of node instances to spawn. One per core is probably good. */
@@ -78,6 +79,7 @@ static int lookup_fd_by_name(const char *name);
 static int find_server(pid_t pid);
 static void migrate_server(int server, pid_t pid);
 static void migrate_servers(void);
+static void restart_servers(void);
 static void spawn_server(int server);
 static void spawn_servers(void);
 static void terminate_servers(void);
@@ -109,6 +111,19 @@ static bool no_respawn = false;
 static bool fast_spawn_protect = false;
 static struct timeval last_sigint_time;
 static struct timeval last_spawn_time;
+static int stat_restart_request_count;
+static int stat_migrate_request_count;
+static int stat_state_request_count;
+static int stat_restart_node_expected_count;
+static int stat_restart_node_unexpected_count;
+static int stat_migrate_node_count;
+static int stat_backlog_node_count;
+static char stat_start_time[MAX_TIME_STRING];
+static char stat_restart_last_request_time[MAX_TIME_STRING];
+static char stat_migrate_last_request_time[MAX_TIME_STRING];
+static char stat_migrate_last_node_time[MAX_TIME_STRING];
+static char stat_restart_last_node_expected_time[MAX_TIME_STRING];
+static char stat_restart_last_node_unexpected_time[MAX_TIME_STRING];
 
 static void
 usage(void)
@@ -182,7 +197,7 @@ get_parent_dir(const char *file)
     return r;
 }
 
-/* Change to location of config file. */
+/* Change pwd location of config file. */
 static void
 change_dir(void)
 {
@@ -192,6 +207,15 @@ change_dir(void)
     }
 }
 
+static void
+store_time(char *buf)
+{
+    time_t now = time(0);
+    str_copy(buf, asctime(localtime(&now)), MAX_TIME_STRING);
+    /* Remove trailing newline. */
+    buf[strlen(buf) - 1] = '\0';
+}
+
 int
 main(int argc, char **argv)
 {
@@ -199,6 +223,8 @@ main(int argc, char **argv)
     int status;
     int ch;
     int logopt = LOG_NDELAY;
+
+    store_time(stat_start_time);
 
     while ((ch = getopt(argc, argv, "dn")) != -1) {
         switch (ch) {
@@ -226,7 +252,7 @@ main(int argc, char **argv)
     if (argc == 2) {
         config_logfile = argv[1];
     } else {
-        config_logfile = "niagra.log";
+        config_logfile = (debug_mode ? "stdout" : "niagra.log");
     }
 
     if (!debug_mode) {
@@ -286,8 +312,11 @@ main(int argc, char **argv)
         /* If the PID is an active PID, then we should respawn it. */
         int server;
         if ((server = find_server(pid)) >= 0) {
+            stat_restart_node_unexpected_count += 1;
+            store_time(stat_restart_last_node_unexpected_time);
+            syslog(LOG_ERR, "server %d (pid %d) terminated unexpectedly by signal", server, pid);
             if (respawn) {
-                syslog(LOG_ERR, "server %d (pid %d) terminated by signal, respawning", server, pid);
+                syslog(LOG_ERR, "server %d (pid %d) respawning", server, pid);
                 spawn_server(server);
             } else {
                 break;
@@ -336,8 +365,7 @@ sigint_handler(int signum, siginfo_t *siginfo, void *context)
     last_sigint_time = new_time;
 
     syslog(LOG_INFO, "SIGINT: restarting (not migrate) all servers");
-    terminate_servers();
-    spawn_servers();
+    restart_servers();
 }
 
 /* SIGTERM terminates all servers and exits (downtime!). */
@@ -667,6 +695,17 @@ update_command_line(void)
     }
 }
 
+static void
+restart_servers(void)
+{
+    stat_restart_request_count += 1;
+    stat_restart_node_expected_count += copies;
+    store_time(stat_restart_last_node_expected_time);
+    store_time(stat_restart_last_request_time);
+
+    terminate_servers();
+    spawn_servers();
+}
 
 /* Find the backlog server identified by pid and clear it.
    It is not an error if it can't be found: it's likely that it was a final backlogged
@@ -678,6 +717,8 @@ clear_backlog_server(pid_t pid)
     for (j = 0; j < MAX_MIGRATE_BACKLOG; j++) {
         for (i = 0; i < copies; i++) {
             if (backlog_servers[j][i] == pid) {
+                stat_backlog_node_count -= 1;
+                store_time(stat_migrate_last_node_time);
                 backlog_servers[j][i] = 0;
                 break;
             }
@@ -688,6 +729,7 @@ clear_backlog_server(pid_t pid)
 static void
 set_backlog_server(int server, pid_t pid)
 {
+    stat_backlog_node_count += 1;
     backlog_servers[0][server] = pid;
 }
 
@@ -704,6 +746,8 @@ terminate_backlog_servers(int backlog_index)
         pid = dead_servers[i];
 
         if (pid > 0) {
+            stat_backlog_node_count -= 1;
+
             syslog(LOG_INFO, "old server %d (pid %d) at backlog position %d going down", i, pid,
                    backlog_index);
 
@@ -742,6 +786,8 @@ migrate_server(int server, pid_t pid)
     int r;
     syslog(LOG_INFO, "migrating old server %d (pid %d)", server, pid);
 
+    stat_migrate_node_count += 1;
+
     /* Add to front backlog. */
     set_backlog_server(server, pid);
 
@@ -758,6 +804,9 @@ migrate_servers(void)
     pid_t pid;
 
     syslog(LOG_INFO, "migrating all servers");
+
+    stat_migrate_request_count += 1;
+    store_time(stat_migrate_last_request_time);
 
     /* Kill last backlog servers and shift all remaining backlog servers. */
     terminate_backlog_servers(MAX_MIGRATE_BACKLOG - 1);
@@ -866,14 +915,89 @@ output_state(pid_t caller)
 {
     FILE *state_file;
     char state_filename[MAX_FILE_NAME];
-    int r;
+    int r, i, j;
+
+    stat_state_request_count += 1;
 
     sprintf(state_filename, "%s/niagra-%d-%d.state", STATE_DIR, niagra_pid, caller);
 
     syslog(LOG_INFO, "state outputting to %s", state_filename);
 
     state_file = fopen(state_filename, "w");
-    fprintf(state_file, "%s" , "Some state");
+
+    fprintf(state_file, "{\n");
+
+    fprintf(state_file, "\"%s\": \"%d\",\n", "pid", niagra_pid);
+    fprintf(state_file, "\"%s\": \"%s\",\n", "start_time", stat_start_time);
+    fprintf(state_file, "\"%s\": \"%s\",\n", "mode", (debug_mode ? "debug" : "production"));
+    fprintf(state_file, "\"%s\": \"%s\",\n", "config", config_file_name);
+    fprintf(state_file, "\"%s\": \"%s\",\n", "log", config_logfile);
+    fprintf(state_file, "\"%s\": \"%d\",\n", "copies", copies);
+    fprintf(state_file, "\"%s\": \"%s\",\n", "command", server_command);
+
+    fprintf(state_file, "\"%s\": {\n", "sockets");
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "count", num_fds);
+    fprintf(state_file, "\t\"%s\": [\n", "details");
+    for (i = 0; i < num_fds; i++) {
+        fprintf(state_file, "\t\t{\n");
+        fprintf(state_file, "\t\t\"%s\": \"%s\",\n", "name", fds[i].name);
+        fprintf(state_file, "\t\t\"%s\": \"%d\",\n", "ipver", fds[i].x.sock.ip_ver);
+        fprintf(state_file, "\t\t\"%s\": \"%s\",\n", "addr", inet_ntoa(fds[i].x.sock.addr));
+        fprintf(state_file, "\t\t\"%s\": \"%i\",\n", "port", fds[i].x.sock.port);
+        fprintf(state_file, "\t\t\"%s\": \"%i\",\n", "backlog", fds[i].x.sock.backlog);
+        fprintf(state_file, "\t\t},\n");
+    }
+    fprintf(state_file, "\t]\n");
+    fprintf(state_file, "},\n");
+
+    fprintf(state_file, "\"%s\": {\n", "nodes");
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "count", copies);
+    fprintf(state_file, "\t\"%s\": [", "pids");
+    for (i = 0; i < copies; i++) {
+        fprintf(state_file, "%d", servers[i]);
+        if (i < copies - 1) {
+            fprintf(state_file, ", ");
+        }
+    }
+    fprintf(state_file, "],\n");
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "backlog_count", stat_backlog_node_count);
+    fprintf(state_file, "\t\"%s\": [", "backlog_pids");
+    for (i = 0, r = 0; i < MAX_MIGRATE_BACKLOG; i++) {
+        for (j = 0; j < copies; j++) {
+            if (backlog_servers[i][j] > 0) {
+                if (r == 1) {
+                    fprintf(state_file, ", ");
+                }
+                r = 1;
+                fprintf(state_file, "%d", backlog_servers[i][j]);
+            }
+        }
+    }
+    fprintf(state_file, "]\n");
+    fprintf(state_file, "},\n");
+
+
+    fprintf(state_file, "\"%s\": {\n", "migrations");
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "requests", stat_migrate_request_count);
+    fprintf(state_file, "\t\"%s\": \"%s\",\n", "last_request_time", stat_migrate_last_request_time);
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "nodes_requested", stat_migrate_node_count);
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "nodes_completed", stat_migrate_node_count - stat_backlog_node_count);
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "nodes_uncompleted", stat_backlog_node_count);
+    fprintf(state_file, "\t\"%s\": \"%s\"\n", "last_node_time", stat_migrate_last_node_time);
+    fprintf(state_file, "},\n");
+
+
+    fprintf(state_file, "\"%s\": {\n", "restarts");
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "requests", stat_restart_request_count);
+    fprintf(state_file, "\t\"%s\": \"%s\",\n", "last_request_time", stat_restart_last_request_time);
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "nodes_expected", stat_restart_node_expected_count);
+    fprintf(state_file, "\t\"%s\": \"%s\",\n", "last_node_expected_time", stat_restart_last_node_expected_time);
+    fprintf(state_file, "\t\"%s\": \"%d\",\n", "nodes_unexpected", stat_restart_node_unexpected_count);
+    fprintf(state_file, "\t\"%s\": \"%s\"\n", "last_node_unexpected_time", stat_restart_last_node_unexpected_time);
+    fprintf(state_file, "},\n");
+
+
+    fprintf(state_file, "}\n");
 
     fclose(state_file);
 
