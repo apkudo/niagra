@@ -59,7 +59,7 @@ You normally want to run niagrad with root privileges.
 
 If `-d` is passed, then niagrad will run in debug mode, and will not daemonize. In this case servers that have been started by niagra will be able to print to standard-output and standard-error.
 
-The config file is a simple plain text format. There must be exactly one `command` line. `user` and `copies` are optional, with a maximum of one. There should be one or more `socket` lines. (Strictly speaking none are needed, however these somewhat defeats the purpose!). Zero or more `file` lines are allowed.
+The config file is a simple plain text format. There must be exactly one `command` line. `user` and `copies` are optional, with a maximum of one. There should be one or more `socket` lines. (Strictly speaking none are needed, however this somewhat defeats the purpose!). Zero or more `file` lines are allowed.
 
 command: command-to-run
 user: username
