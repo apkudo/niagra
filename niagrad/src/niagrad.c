@@ -322,7 +322,6 @@ main(int argc, char **argv)
                 break;
             }
         } else {
-
             /* Backlog process exited, find it and clear it. */
             clear_backlog_server(pid);
         }
@@ -583,7 +582,8 @@ parse_config_file(void)
         exit(EXIT_FAILURE);
     }
 
-    (void) fclose(f); /* if there is an error on close, we don't care */
+    /* if there is an error on close, we don't care */
+    (void) fclose(f);
 }
 
 static void
