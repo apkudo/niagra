@@ -68,13 +68,13 @@ parse_pid_command_args()
 
 find_instances()
 {
-    instances=`ps aux | grep '[n]iagrad' | grep -v grep | grep -v 'niagra start'`
+    instances=`ps aux | awk '{print $11 " " $2}' | grep "^niagrad" | awk '{print $2}'`
     if [ -n "$instances" ]; then
         instance_count=`echo "$instances" | wc -l`
     else
         instance_count=0
     fi
-    pids=`ps aux | grep '[n]iagrad' | grep -v grep | grep -v 'niagra start' | awk '{print $2}'`
+    pids=`ps aux | awk '{print $11 " " $2}' | grep "^niagrad" | awk '{print $2}'`
 }
 
 find_pid()
