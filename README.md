@@ -98,3 +98,4 @@ Not everything documented is currently actually implemented. The following is no
  * express plugin
  * alerts via email
  * defaulting copies to the number cores
+ * add version information to binary
