@@ -33,16 +33,20 @@
 #define FD_ARG_LEN (FD_PREFIX_SIZE + MAX_FD_NAME + INT_STRING_LEN)
 #define ENV_ARG_LEN (ENV_PREFIX_SIZE + MAX_ENV_NAME)
 #define FILE_ARG_LEN (FILE_PREFIX_SIZE + MAX_FILEKEY_NAME + INT_STRING_LEN)
+#define APP_OPTION_ARG_LEN (MAX_APP_OPTION_NAME + MAX_APP_OPTION_VALUE + 2)
 #define INT_STRING_LEN 10
 #define MAX_LINE_SIZE 4096
 #define MAX_COMMAND_LINE 1024
 #define MAX_FD_NAME 64
 #define MAX_FD_TYPE 64
 #define MAX_ENV_NAME 64
+#define MAX_APP_OPTION_NAME 64
+#define MAX_APP_OPTION_VALUE 256
 #define MAX_FDS 10
 #define MAX_FILES 10
 #define MAX_FILE_NAME 1024
 #define MAX_FILEKEY_NAME 64
+#define MAX_APP_OPTIONS 10
 #define MAX_TIME_STRING 26
 #define NUM_SOCK_OPTIONS 6
 #define NUM_FILE_OPTIONS 2
@@ -81,6 +85,11 @@ struct file {
     char key[MAX_FILEKEY_NAME];
     char name[MAX_FILE_NAME];
     int fd;
+};
+
+struct app_option {
+    char name[MAX_APP_OPTION_NAME];
+    char value[MAX_APP_OPTION_VALUE];
 };
 
 static void parse_config_file(void);
@@ -128,6 +137,8 @@ static struct fd fds[MAX_FDS];
 static int num_fds;
 static struct file files[MAX_FILES];
 static int num_files;
+static struct app_option app_options[MAX_APP_OPTIONS];
+static int num_app_options;
 static int copies = 1;
 static pid_t servers[MAX_COPIES];
 static pid_t backlog_servers[MAX_MIGRATE_BACKLOG][MAX_COPIES];
@@ -672,6 +683,33 @@ parse_config_file(void)
                 copies = c;
             }
 
+        } else if (strncmp(command_value[0], "app-", 4) == 0) {
+            struct app_option *app_option;
+
+            if (num_app_options >= MAX_APP_OPTIONS) {
+                syslog(LOG_INFO, "Too many app options defined. A maximum of %d is allowed", MAX_APP_OPTIONS);
+                n = -1;
+                break;
+            }
+
+            app_option = &app_options[num_app_options];
+
+            r = str_copy(app_option->name, command_value[0], sizeof app_option->name);
+            if (r == -1) {
+                syslog(LOG_INFO, "app option name too long");
+                n = -1;
+                break;
+            }
+
+            r = str_copy(app_option->value, command_value[1], sizeof app_option->value);
+            if (r == -1) {
+                syslog(LOG_INFO, "app option value too long");
+                n = -1;
+                break;
+            }
+
+            num_app_options++;
+
         } else {
             /* Invalid command */
             syslog(LOG_INFO, "Invalid command: '%s'", command_value[0]);
@@ -809,7 +847,8 @@ lookup_file_by_key(const char *key)
 static void
 update_command_line(void)
 {
-    static char fd_arg[FD_ARG_LEN], env_arg[ENV_ARG_LEN], file_arg[FILE_ARG_LEN];
+    static char fd_arg[FD_ARG_LEN], env_arg[ENV_ARG_LEN], file_arg[FILE_ARG_LEN],
+        app_option_arg[APP_OPTION_ARG_LEN];
     int i, r;
 
     for (i = 0; i < num_fds; i++) {
@@ -839,6 +878,23 @@ update_command_line(void)
         }
 
         r = str_concat(server_command, file_arg, sizeof server_command);
+
+        if (r == -1) {
+            syslog(LOG_INFO, "server command buffer too small");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (i = 0; i < num_app_options; i++) {
+        struct app_option *app_option = &app_options[i];
+
+        r = snprintf(app_option_arg, sizeof app_option_arg, " --%s %s", app_option->name, app_option->value);
+        if (r >= sizeof app_option_arg) {
+            syslog(LOG_INFO, "Unable to format app_option argument (%d - %zd)", r, sizeof app_option_arg);
+            exit(EXIT_FAILURE);
+        }
+
+        r = str_concat(server_command, app_option_arg, sizeof server_command);
 
         if (r == -1) {
             syslog(LOG_INFO, "server command buffer too small");
