@@ -5,6 +5,9 @@
   "main": "lib/niagra.js",
   "keywords": [ "node","niagra" ],
   "author": "Apkudo Inc.",
+  "contributors": [ "Josh Matthews", "Benno Leslie" ],
   "license": "BSD",
   "repository": { "type": "git", "url": "git@github.com:apkudo/niagra.git" }
+  "bugs": { "url": "http://github.com/apkudo/niagra/issues" },
+  "scripts": { "install": "node-waf configure build install distclean" }
 }
