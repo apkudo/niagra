@@ -1,15 +1,10 @@
 {
   "name": "niagra",
   "version": "1.0.0",
-  "description": "niagra server interface",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [
-    "node",
-    "niagra"
-  ],
+  "description": "like viagra for your nodes, keeps your nodes up",
+  "main": "libs/niagra.js",
+  "keywords": [ "node","niagra" ],
   "author": "Apkudo Inc.",
-  "license": "BSD"
+  "license": "BSD",
+  "repository": { "type": "git", "url": "git@github.com:apkudo/niagra.git" }
 }
