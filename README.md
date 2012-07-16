@@ -89,13 +89,15 @@ Each socket file descriptor is set as non-blocking, so in node.js can be directl
 
 The server must register to handle SIGUSR2 signals. Once this signal is received the server should not `accept` any more connections on provided sockets.
 
+Additionally, any file arguments are passed in the form `--file <key>,<fd>`.
+
 ## TODO
 
 Not everything documented is currently actually implemented. The following is not implemented:
 
- * 'file' option
  * IPv6 sockets
  * dropping privileges
  * alerts via email
  * defaulting copies to the number cores
  * add version information to binary
+ * arbitrary config-* options passed through to node
