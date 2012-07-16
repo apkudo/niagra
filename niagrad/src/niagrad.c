@@ -25,17 +25,22 @@
 #define SYSLOG_IDENT "niagra"
 #define FD_PREFIX " --fd "
 #define FD_PREFIX_SIZE (sizeof FD_PREFIX)
+#define ENV_PREFIX " --env "
+#define ENV_PREFIX_SIZE (sizeof ENV_PREFIX)
 #define INT_STRING_LEN 10
 #define FD_ARG_LEN (FD_PREFIX_SIZE + MAX_FD_NAME + INT_STRING_LEN)
+#define ENV_ARG_LEN (ENV_PREFIX_SIZE + MAX_ENV_NAME)
 #define INT_STRING_LEN 10
 #define MAX_LINE_SIZE 4096
 #define MAX_COMMAND_LINE 1024
 #define MAX_FD_NAME 64
+#define MAX_FD_TYPE 64
+#define MAX_ENV_NAME 64
 #define MAX_FDS 10
 #define MAX_FILES 10
 #define MAX_FILE_NAME 1024
 #define MAX_TIME_STRING 26
-#define NUM_SOCK_OPTIONS 5
+#define NUM_SOCK_OPTIONS 6
 
 /* Maximum number of node instances to spawn. One per core is probably good. */
 #define MAX_COPIES 10
@@ -58,6 +63,7 @@ struct fd_file {
 
 struct fd {
     char name[MAX_FD_NAME];
+    char type[MAX_FD_TYPE];
     int fd;
     enum fd_type fd_type;
     union {
@@ -68,7 +74,7 @@ struct fd {
 
 static void parse_config_file(void);
 static void update_command_line(void);
-static char * get_parent_dir(const char *file);
+static char *get_parent_dir(const char *file);
 static void change_dir(void);
 
 static void create_sockets(void);
@@ -519,9 +525,16 @@ parse_config_file(void)
                 break;
             }
 
-            if (strcmp(socket_parts[1], "4") == 0) {
+            r = str_copy(fd->type, socket_parts[1], sizeof fd->type);
+            if (r == -1) {
+                syslog(LOG_INFO, "socket type too long");
+                n = -1;
+                break;
+            }
+
+            if (strcmp(socket_parts[2], "4") == 0) {
                 fd->x.sock.ip_ver = 4;
-            } else if (strcmp(socket_parts[1], "6") == 0) {
+            } else if (strcmp(socket_parts[2], "6") == 0) {
                 fd->x.sock.ip_ver = 6;
             } else {
                 syslog(LOG_INFO, "IP version must be '4' or '6'");
@@ -529,21 +542,21 @@ parse_config_file(void)
                 break;
             }
 
-            r = inet_aton(socket_parts[2], &fd->x.sock.addr);
+            r = inet_aton(socket_parts[3], &fd->x.sock.addr);
             if (r == 0) {
                 syslog(LOG_INFO, "invalid network address");
                 n = -1;
                 break;
             }
 
-            r = str_uint16(socket_parts[3], &fd->x.sock.port);
+            r = str_uint16(socket_parts[4], &fd->x.sock.port);
             if (r == -1) {
                 syslog(LOG_INFO, "invalid port number");
                 n = -1;
                 break;
             }
 
-            r = str_int(socket_parts[4], &fd->x.sock.backlog);
+            r = str_int(socket_parts[5], &fd->x.sock.backlog);
             if (r == -1) {
                 syslog(LOG_INFO, "invalid backlog");
                 n = -1;
@@ -674,13 +687,13 @@ lookup_fd_by_name(const char *name)
 static void
 update_command_line(void)
 {
-    static char fd_arg[FD_ARG_LEN];
+    static char fd_arg[FD_ARG_LEN], env_arg[ENV_ARG_LEN];
     int i, r;
 
     for (i = 0; i < num_fds; i++) {
         struct fd *fd = &fds[i];
 
-        r = snprintf(fd_arg, sizeof fd_arg, FD_PREFIX "%s,%d", fd->name, fd->fd);
+        r = snprintf(fd_arg, sizeof fd_arg, FD_PREFIX "%s,%s,%d", fd->name, fd->type, fd->fd);
         if (r >= sizeof fd_arg) {
             syslog(LOG_INFO, "Unable to format fd argument (%d - %zd)", r, sizeof fd_arg);
             exit(EXIT_FAILURE);

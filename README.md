@@ -66,7 +66,8 @@ The config file is a simple plain text format. There must be exactly one `comman
     command: command-to-run
     user: username
     copies: n
-    socket: name [4|6] ip_addr port backlog
+    socket: name [secure|insecure] [4|6] ip_addr port backlog
+    environment: [debug|production|other]
     file: name /path/ flags
 
 All relative paths are relative to the location of the config file.
@@ -82,7 +83,7 @@ niagrad implements the following signal interface:
 
 Servers spawned by niagra must be ready to follow the interface provided.
 
-This is quite simple. On server launch, additional command line arguments will be provided in the form `--fd <name>,<fd>`. Each of these signifies an open file descriptor passed to the server which can then be used.
+This is quite simple. On server launch, additional command line arguments will be provided in the form `--fd <name>,<type>,<fd>`. Each of these signifies an open file descriptor passed to the server which can then be used.
 
 Each socket file descriptor is set as non-blocking, so in node.js can be directly passed to listen({ fd: *fd* }).
 
