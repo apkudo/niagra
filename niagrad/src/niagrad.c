@@ -27,9 +27,12 @@
 #define FD_PREFIX_SIZE (sizeof FD_PREFIX)
 #define ENV_PREFIX " --env "
 #define ENV_PREFIX_SIZE (sizeof ENV_PREFIX)
+#define FILE_PREFIX " --file "
+#define FILE_PREFIX_SIZE (sizeof FILE_PREFIX)
 #define INT_STRING_LEN 10
 #define FD_ARG_LEN (FD_PREFIX_SIZE + MAX_FD_NAME + INT_STRING_LEN)
 #define ENV_ARG_LEN (ENV_PREFIX_SIZE + MAX_ENV_NAME)
+#define FILE_ARG_LEN (FILE_PREFIX_SIZE + MAX_FILEKEY_NAME + INT_STRING_LEN)
 #define INT_STRING_LEN 10
 #define MAX_LINE_SIZE 4096
 #define MAX_COMMAND_LINE 1024
@@ -39,8 +42,10 @@
 #define MAX_FDS 10
 #define MAX_FILES 10
 #define MAX_FILE_NAME 1024
+#define MAX_FILEKEY_NAME 64
 #define MAX_TIME_STRING 26
 #define NUM_SOCK_OPTIONS 6
+#define NUM_FILE_OPTIONS 2
 
 /* Maximum number of node instances to spawn. One per core is probably good. */
 #define MAX_COPIES 10
@@ -72,6 +77,12 @@ struct fd {
     } x;
 };
 
+struct file {
+    char key[MAX_FILEKEY_NAME];
+    char name[MAX_FILE_NAME];
+    int fd;
+};
+
 static void parse_config_file(void);
 static void update_command_line(void);
 static char *get_parent_dir(const char *file);
@@ -81,6 +92,11 @@ static void create_sockets(void);
 static int create_socket(struct in_addr addr, uint16_t port, int backlog);
 static void install_signal_handlers(void);
 static int lookup_fd_by_name(const char *name);
+
+static void open_files(void);
+static int lookup_file_by_key(const char *name);
+
+static void drop_privs(void);
 
 static int find_server(pid_t pid);
 static void migrate_server(int server, pid_t pid);
@@ -110,6 +126,8 @@ static char server_command[MAX_COMMAND_LINE];
 static char config_environment[MAX_ENV_NAME];
 static struct fd fds[MAX_FDS];
 static int num_fds;
+static struct file files[MAX_FILES];
+static int num_files;
 static int copies = 1;
 static pid_t servers[MAX_COPIES];
 static pid_t backlog_servers[MAX_MIGRATE_BACKLOG][MAX_COPIES];
@@ -215,6 +233,12 @@ change_dir(void)
 }
 
 static void
+drop_privs(void)
+{
+    /* TODO: implement. */
+}
+
+static void
 store_time(char *buf)
 {
     time_t now = time(0);
@@ -274,17 +298,23 @@ main(int argc, char **argv)
     syslog(LOG_INFO, "niagrad started: %ld", (long) niagra_pid);
 
     install_signal_handlers();
+
     parse_config_file();
-    change_dir();
-
-    create_sockets();
-
     if (str_isempty(server_command)) {
         syslog(LOG_ERR, "no command specified.");
         exit(EXIT_FAILURE);
     }
 
+    change_dir();
+
+    create_sockets();
+
+    open_files();
+
     update_command_line();
+
+    drop_privs();
+
     spawn_servers();
 
     for (;;) {
@@ -453,6 +483,7 @@ parse_config_file(void)
     static char line[MAX_LINE_SIZE];
     char *command_value[2];
     char *socket_parts[NUM_SOCK_OPTIONS];
+    char *file_parts[NUM_FILE_OPTIONS];
 
     f = fopen(config_file_name, "r");
 
@@ -472,7 +503,7 @@ parse_config_file(void)
         r = str_split(line, ':', command_value, 2);
 
         if (r < 2) {
-            /* Must be a command portition */
+            /* Must be a command portion */
             n = -1;
             break;
         }
@@ -493,6 +524,47 @@ parse_config_file(void)
                 n = -1;
                 break;
             }
+
+        } else if (strcmp(command_value[0], "file") == 0) {
+            struct file *file;
+
+            r = str_split(command_value[1], ' ', file_parts, NUM_FILE_OPTIONS);
+            if (r != NUM_FILE_OPTIONS) {
+                syslog(LOG_INFO, "Incorrect number of fields (%d) for file options. Should be %d fields.",
+                       r, NUM_FILE_OPTIONS);
+                n = -1;
+                break;
+            }
+
+            if (num_files >= MAX_FILES) {
+                syslog(LOG_INFO, "Too many files defined. A maximum of %d is allowed", MAX_FILES);
+                n = -1;
+                break;
+            }
+
+            file = &files[num_files];
+
+            if (lookup_file_by_key(file_parts[0]) != -1) {
+                syslog(LOG_INFO, "duplicate file key: %s", file_parts[0]);
+                n = -1;
+                break;
+            }
+
+            r = str_copy(file->key, file_parts[0], sizeof file->key);
+            if (r == -1) {
+                syslog(LOG_INFO, "file key too long");
+                n = -1;
+                break;
+            }
+
+            r = str_copy(file->name, file_parts[1], sizeof file->name);
+            if (r == -1) {
+                syslog(LOG_INFO, "file name too long");
+                n = -1;
+                break;
+            }
+
+            num_files++;
 
         } else if (strcmp(command_value[0], "socket") == 0) {
             struct fd *fd;
@@ -703,9 +775,41 @@ lookup_fd_by_name(const char *name)
 }
 
 static void
+open_files(void)
+{
+    int i;
+    for (i = 0; i < num_files; i++) {
+        struct file *file = &files[i];
+        file->fd = open(file->name, O_RDONLY);
+        if (file->fd == -1) {
+            syslog(LOG_ERR, "error opening file %s: %m", file->name);
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+static int
+lookup_file_by_key(const char *key)
+{
+    int i;
+    for (i = 0; i < num_files; i++) {
+        struct file *file = &files[i];
+        if (strcmp(key, file->key) == 0) {
+            break;
+        }
+    }
+
+    if (i == num_files) {
+        i = -1;
+    }
+
+    return i;
+}
+
+static void
 update_command_line(void)
 {
-    static char fd_arg[FD_ARG_LEN], env_arg[ENV_ARG_LEN];
+    static char fd_arg[FD_ARG_LEN], env_arg[ENV_ARG_LEN], file_arg[FILE_ARG_LEN];
     int i, r;
 
     for (i = 0; i < num_fds; i++) {
@@ -718,6 +822,23 @@ update_command_line(void)
         }
 
         r = str_concat(server_command, fd_arg, sizeof server_command);
+
+        if (r == -1) {
+            syslog(LOG_INFO, "server command buffer too small");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (i = 0; i < num_files; i++) {
+        struct file *file = &files[i];
+
+        r = snprintf(file_arg, sizeof file_arg, FILE_PREFIX "%s,%d", file->key, file->fd);
+        if (r >= sizeof file_arg) {
+            syslog(LOG_INFO, "Unable to format file argument (%d - %zd)", r, sizeof file_arg);
+            exit(EXIT_FAILURE);
+        }
+
+        r = str_concat(server_command, file_arg, sizeof server_command);
 
         if (r == -1) {
             syslog(LOG_INFO, "server command buffer too small");
@@ -981,6 +1102,7 @@ output_state(pid_t caller)
     fprintf(state_file, "\"%s\": \"%s\",\n", "log", config_logfile);
     fprintf(state_file, "\"%s\": \"%d\",\n", "copies", copies);
     fprintf(state_file, "\"%s\": \"%s\",\n", "command", server_command);
+    fprintf(state_file, "\"%s\": \"%s\",\n", "environment", config_environment);
 
     fprintf(state_file, "\"%s\": {\n", "sockets");
     fprintf(state_file, "\t\"%s\": \"%d\",\n", "count", num_fds);
