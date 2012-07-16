@@ -2,7 +2,7 @@
   "name": "niagra",
   "version": "1.0.0",
   "description": "like viagra for your nodes, keeps your nodes up",
-  "main": "libs/niagra.js",
+  "main": "lib/niagra.js",
   "keywords": [ "node","niagra" ],
   "author": "Apkudo Inc.",
   "license": "BSD",
