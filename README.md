@@ -100,4 +100,5 @@ Not everything documented is currently actually implemented. The following is no
  * alerts via email
  * defaulting copies to the number cores
  * add version information to binary
- * arbitrary config-* options passed through to node
+ * document app- config options (currently support string and integer)
+ * allow app- config options to be json
