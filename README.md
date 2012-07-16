@@ -67,7 +67,7 @@ The config file is a simple plain text format. There must be exactly one `comman
     user: username
     copies: n
     socket: name [secure|insecure] [4|6] ip_addr port backlog
-    environment: [debug|production|other]
+    environment: [development|production|other]
     file: name /path/ flags
 
 All relative paths are relative to the location of the config file.
@@ -96,7 +96,6 @@ Not everything documented is currently actually implemented. The following is no
  * 'file' option
  * IPv6 sockets
  * dropping privileges
- * express plugin
  * alerts via email
  * defaulting copies to the number cores
  * add version information to binary

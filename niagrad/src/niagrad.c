@@ -107,6 +107,7 @@ static const char *config_file_name;
 static const char *config_file_dir;
 static const char *config_logfile;
 static char server_command[MAX_COMMAND_LINE];
+static char config_environment[MAX_ENV_NAME];
 static struct fd fds[MAX_FDS];
 static int num_fds;
 static int copies = 1;
@@ -569,6 +570,23 @@ parse_config_file(void)
 
         } else if (strcmp(command_value[0], "user") == 0) {
             syslog(LOG_INFO, "WARNING: Got user command: %s - not implemented", command_value[1]);
+
+        } else if (strcmp(command_value[0], "environment") == 0) {
+
+            if (!str_isempty(config_environment)) {
+                syslog(LOG_INFO, "environment already set.");
+                n = -1;
+                break;
+            }
+
+            r = str_copy(config_environment, command_value[1], sizeof config_environment);
+
+            if (r == -1) {
+                syslog(LOG_INFO, "environment too long.");
+                n = -1;
+                break;
+            }
+
         } else if (strcmp(command_value[0], "copies") == 0) {
             int c = atoi(command_value[1]);
             if (c <= 0) {
@@ -706,6 +724,22 @@ update_command_line(void)
             exit(EXIT_FAILURE);
         }
     }
+
+    if (!str_isempty(config_environment)) {
+        r = snprintf(env_arg, sizeof env_arg, ENV_PREFIX "%s", config_environment);
+        if (r >= sizeof env_arg) {
+            syslog(LOG_INFO, "Unable to format env argument (%d - %zd)", r, sizeof env_arg);
+            exit(EXIT_FAILURE);
+        }
+
+        r = str_concat(server_command, env_arg, sizeof server_command);
+
+        if (r == -1) {
+            syslog(LOG_INFO, "server command buffer too small");
+            exit(EXIT_FAILURE);
+        }
+    }
+
 }
 
 static void
