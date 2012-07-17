@@ -1103,7 +1103,7 @@ spawn_server(int server)
     if (pid == 0) {
         /* Child process */
         syslog(LOG_INFO, "spawning server %d with command: '%s'", server, server_command);
-        (void) execl("/bin/sh", "/bin/sh", "-c", server_command, NULL);
+        (void) execl("/bin/bash", "/bin/bash", "-c", server_command, NULL);
 
         syslog(LOG_ERR, "execl: %m");
         exit(EXIT_FAILURE);
