@@ -1,5 +1,5 @@
 # Example test file
 command: node ./test.js
-socket: default 4 127.0.0.1 1337 20
+socket: default insecure 4 127.0.0.1 1337 20
 user: notimplemented
 copies: 4
