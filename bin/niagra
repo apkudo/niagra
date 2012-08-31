@@ -13,12 +13,14 @@ show_usage()
     echo "       state [pid] | st [pid]              Output state of existing niagra instance."
     echo "   options:"
     echo "       -d                                  Debug mode. niagra instance will not be daemonized."
+    echo "       -n                                  No-respawn mode. niagra will not respawn instances on fatal exception."
     echo "       pid                                 pid of niagra instance. Command applies to all instances if not provided."
     exit 1
 }
 
 command=$1
 debug=""
+norespawn=""
 config_file=""
 log_file=
 instances=""
@@ -30,13 +32,23 @@ signalled=0
 
 parse_start_command_args()
 {
-    if [ "$2" == "-d" ]; then
-        if [ $# != 3 ] && [ $# != 4 ]; then
+    if [ "$2" == "-d" ] || [ "$2" == "-n" ]; then
+        if [ $# != 3 ] && [ $# != 4 ] && [ $# != 5 ]; then
             show_usage
         fi
-        debug="-d"
-        config_file=$3
-        log_file=$4
+        if [ "$2" == "-d" ] || [ "$3" == "-d" ]; then
+            debug="-d"
+        fi
+        if [ "$2" == "-n" ] || [ "$3" == "-n" ]; then
+            norespawn="-n"
+        fi
+        if [ -z $debug ] || [ -z $norespawn ]; then
+            config_file=$3
+            log_file=$4
+        else
+            config_file=$4
+            log_file=$5
+        fi
     else
         if [ $# != 2 ] && [ $# != 3 ]; then
             show_usage
@@ -133,7 +145,7 @@ on_signalled() {
 
 command_start()
 {
-    cmd="niagrad $debug $config_file $log_file"
+    cmd="niagrad $debug $norespawn $config_file $log_file"
     $cmd
 }
 
