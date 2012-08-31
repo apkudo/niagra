@@ -38,7 +38,7 @@ niagra also monitors the running process and is able to respawn a server process
     $ niagra [ command ] [ options ]
 
 Commands:
- * *start [-d] config_file [log_file]*: Start niagra instance with config file and optional log file.
+ * *start [-d] [-n] config_file [log_file]*: Start niagra instance with config file and optional log file.
  * *list* | *ls*:  List running niagra instances.
  * *count*: Count of running niagra instances.
  * *migrate [pid]* | *mg [pid]*: Migrate a niagra instance. Zero-downtime restart of all nodes.
@@ -48,6 +48,7 @@ Commands:
 
 Options:
  * *-d*: Debug mode. niagra instance will not be daemonized.
+ * *-n*: No-respawn mode. niagra will not respawn instances on fatal exception.
  * *pid*: pid of niagra instance. Command applies to all instances if not provided.
 
 
