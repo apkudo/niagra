@@ -1,6 +1,6 @@
 {
   "name": "niagra",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "like viagra for your nodes, keeps your nodes up",
   "main": "lib/niagra.js",
   "keywords": [ "node", "niagra" ],
