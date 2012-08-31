@@ -51,6 +51,7 @@
 #define MAX_TIME_STRING 26
 #define NUM_SOCK_OPTIONS 6
 #define NUM_FILE_OPTIONS 2
+#define NO_PID 0
 
 /* Maximum number of node instances to spawn. One per core is probably good. */
 #define MAX_COPIES 10
@@ -368,7 +369,8 @@ main(int argc, char **argv)
                 syslog(LOG_ERR, "server %d (pid %d) respawning", server, pid);
                 spawn_server(server);
             } else {
-                break;
+                /* Child died, but we've been asked not to respawn. Remove the pid from servers. */
+                servers[server] = NO_PID;
             }
         } else {
             /* Backlog process exited, find it and clear it. */
@@ -970,7 +972,7 @@ terminate_backlog_servers(int backlog_index)
 
         pid = dead_servers[i];
 
-        if (pid > 0) {
+        if (pid != NO_PID) {
             stat_backlog_node_count -= 1;
 
             syslog(LOG_INFO, "old server %d (pid %d) at backlog position %d going down", i, pid,
@@ -987,7 +989,7 @@ terminate_backlog_servers(int backlog_index)
             }
         }
 
-        dead_servers[i] = 0;
+        dead_servers[i] = NO_PID;
     }
 }
 
@@ -1041,7 +1043,7 @@ migrate_servers(void)
     for (i = 0; i < copies; i++) {
         pid = servers[i];
         spawn_server(i);
-        if (pid > 0) {
+        if (pid != NO_PID) {
             migrate_server(i, pid);
         }
     }
@@ -1053,9 +1055,10 @@ static void
 terminate_server(int server)
 {
     pid_t pid = servers[server];
+
     syslog(LOG_INFO, "server %d (pid %d) going down", server, pid);
 
-    servers[server] = 0;
+    servers[server] = NO_PID;
 
     int r;
     r = kill(pid, SIGTERM);
@@ -1074,7 +1077,9 @@ terminate_servers(void)
 
     int i;
     for (i = 0; i < copies; i++) {
-        terminate_server(i);
+        if (servers[i] != NO_PID) {
+            terminate_server(i);
+        }
     }
 
     for (i = 0; i < MAX_MIGRATE_BACKLOG; i++) {
@@ -1155,6 +1160,7 @@ output_state(pid_t caller)
     fprintf(state_file, "\"%s\": \"%d\",\n", "pid", niagra_pid);
     fprintf(state_file, "\"%s\": \"%s\",\n", "start_time", stat_start_time);
     fprintf(state_file, "\"%s\": \"%s\",\n", "mode", (debug_mode ? "debug" : "production"));
+    fprintf(state_file, "\"%s\": \"%s\",\n", "respawn", (no_respawn ? "no" : "yes"));
     fprintf(state_file, "\"%s\": \"%s\",\n", "config", config_file_name);
     fprintf(state_file, "\"%s\": \"%s\",\n", "log", config_logfile);
     fprintf(state_file, "\"%s\": \"%d\",\n", "copies", copies);
@@ -1179,10 +1185,13 @@ output_state(pid_t caller)
     fprintf(state_file, "\"%s\": {\n", "nodes");
     fprintf(state_file, "\t\"%s\": \"%d\",\n", "count", copies);
     fprintf(state_file, "\t\"%s\": [", "pids");
-    for (i = 0; i < copies; i++) {
-        fprintf(state_file, "%d", servers[i]);
-        if (i < copies - 1) {
-            fprintf(state_file, ", ");
+    for (i = 0, r = 0; i < copies; i++) {
+        if (servers[i] != NO_PID) {
+            if (r == 1) {
+                fprintf(state_file, ", ");
+            }
+            r = 1;
+            fprintf(state_file, "%d", servers[i]);
         }
     }
     fprintf(state_file, "],\n");
@@ -1190,7 +1199,7 @@ output_state(pid_t caller)
     fprintf(state_file, "\t\"%s\": [", "backlog_pids");
     for (i = 0, r = 0; i < MAX_MIGRATE_BACKLOG; i++) {
         for (j = 0; j < copies; j++) {
-            if (backlog_servers[i][j] > 0) {
+            if (backlog_servers[i][j] != NO_PID) {
                 if (r == 1) {
                     fprintf(state_file, ", ");
                 }
