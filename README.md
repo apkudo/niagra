@@ -62,7 +62,7 @@ You normally want to run niagrad with root privileges.
 
 If `-d` is passed, then niagrad will run in debug mode, and will not daemonize. In this case servers that have been started by niagra will be able to print to standard-output and standard-error.
 
-The config file is a simple plain text format. There must be exactly one `command` line. `user` and `copies` are optional, with a maximum of one. There should be one or more `socket` lines. (Strictly speaking none are needed, however this somewhat defeats the purpose!). Zero or more `file` lines are allowed.
+The config file is a simple plain text format. There must be exactly one `command` line. `user`, `copies`, and `environment` lines are optional, with a maximum of one each. Zero or more `socket` and `file` lines are allowed. Additionally, zero or more `app-` prefixed lines are allowed - these are passed through to the app as application-specific variables.
 
     command: command-to-run
     user: username
@@ -70,6 +70,7 @@ The config file is a simple plain text format. There must be exactly one `comman
     socket: name [secure|insecure] [4|6] ip_addr port backlog
     environment: [development|production|other]
     file: name /path/ flags
+    app-foo: bar
 
 All relative paths are relative to the location of the config file.
 
@@ -101,5 +102,4 @@ Not everything documented is currently actually implemented. The following is no
  * alerts via email
  * defaulting copies to the number cores
  * add version information to binary
- * document app- config options (currently support string and integer)
  * allow app- config options to be json
