@@ -206,7 +206,7 @@ int str_uint16(const char *str, uint16_t *val) {
 
     tmp = strtoul(str, NULL, 0);
 
-    if (tmp > UINT16_MAX || tmp < 0) {
+    if (tmp > UINT16_MAX || str[0] == '-') {
 	errno = ERANGE;
 	return -1;
     }

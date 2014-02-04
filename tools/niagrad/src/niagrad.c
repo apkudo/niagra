@@ -1,4 +1,4 @@
-/* Copyright: Apkudo Inc. 2012: See LICENSE file. */
+/* Copyright: Apkudo LLC 2014: See LICENSE file. */
 
 #include <sys/types.h>
 
@@ -858,7 +858,7 @@ update_command_line(void)
         struct fd *fd = &fds[i];
 
         r = snprintf(fd_arg, sizeof fd_arg, FD_PREFIX "%s,%s,%d", fd->name, fd->type, fd->fd);
-        if (r >= sizeof fd_arg) {
+        if (r >= (int)(sizeof fd_arg)) {
             syslog(LOG_INFO, "Unable to format fd argument (%d - %zd)", r, sizeof fd_arg);
             exit(EXIT_FAILURE);
         }
@@ -875,7 +875,7 @@ update_command_line(void)
         struct file *file = &files[i];
 
         r = snprintf(file_arg, sizeof file_arg, FILE_PREFIX "%s,%d", file->key, file->fd);
-        if (r >= sizeof file_arg) {
+        if (r >= (int)(sizeof file_arg)) {
             syslog(LOG_INFO, "Unable to format file argument (%d - %zd)", r, sizeof file_arg);
             exit(EXIT_FAILURE);
         }
@@ -892,7 +892,7 @@ update_command_line(void)
         struct app_option *app_option = &app_options[i];
 
         r = snprintf(app_option_arg, sizeof app_option_arg, " --%s %s", app_option->name, app_option->value);
-        if (r >= sizeof app_option_arg) {
+        if (r >= (int)(sizeof app_option_arg)) {
             syslog(LOG_INFO, "Unable to format app_option argument (%d - %zd)", r, sizeof app_option_arg);
             exit(EXIT_FAILURE);
         }
@@ -907,7 +907,7 @@ update_command_line(void)
 
     if (!str_isempty(config_environment)) {
         r = snprintf(env_arg, sizeof env_arg, ENV_PREFIX "%s", config_environment);
-        if (r >= sizeof env_arg) {
+        if (r >= (int)(sizeof env_arg)) {
             syslog(LOG_INFO, "Unable to format env argument (%d - %zd)", r, sizeof env_arg);
             exit(EXIT_FAILURE);
         }
