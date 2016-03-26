@@ -299,13 +299,13 @@ main(int argc, char **argv)
         config_logfile = (debug_mode ? "stdout" : "niagra.log");
     }
 
-    if (!debug_mode) {
-        daemonize();
-    }
-
     logopt |= LOG_PERROR;
 
     openlog(SYSLOG_IDENT, logopt, LOG_DAEMON);
+
+    if (!debug_mode) {
+        daemonize();
+    }
 
     niagra_pid = getpid();
     syslog(LOG_INFO, "niagrad started: %ld", (long) niagra_pid);
@@ -1038,7 +1038,7 @@ migrate_servers(void)
     /* Kill last backlog servers and shift all remaining backlog servers. */
     terminate_backlog_servers(MAX_MIGRATE_BACKLOG - 1);
     shift_backlog_servers();
- 
+
     /* Spawn the new server and migrate the old server to front of backlog. */
     for (i = 0; i < copies; i++) {
         pid = servers[i];

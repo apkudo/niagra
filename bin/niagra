@@ -6,6 +6,7 @@ show_usage()
     echo "   commands:"
     echo "       start [-d] config_file [log_file]   Start niagra instance with config file and optional log file."
     echo "       list | ls                           List running niagra instances."
+    echo "       listg str                           List of running niagra instances culled by grep on str."
     echo "       count                               Count of running niagra instances."
     echo "       migrate [pid] | mg [pid]            Migrate a niagra instance. Zero-downtime restart of all nodes."
     echo "       restart [pid]                       Restart a niagra instance. Possible-downtime restart of all nodes."
@@ -68,6 +69,16 @@ parse_no_command_args()
     fi
 }
 
+parse_str_command_args()
+{
+    if [ $# -gt 2 ]; then
+        show_usage
+    fi
+    if [ $# == 2 ]; then
+        grep_str=$2
+    fi
+}
+
 parse_pid_command_args()
 {
     if [ $# -gt 2 ]; then
@@ -87,6 +98,13 @@ find_instances()
         instance_count=0
     fi
     pids=`ps aux | awk '{print $11 " " $2}' | grep "^niagrad" | awk '{print $2}'`
+}
+
+find_instances_for_str()
+{
+    if [ -n "$grep_str" ]; then
+        instances=`ps aux | awk '{print $11 " " $12 " " $2}' | grep "^niagrad" | grep "$grep_str" | awk '{print $3}'`
+    fi
 }
 
 find_pid()
@@ -157,6 +175,14 @@ command_list()
     fi
 }
 
+command_listg()
+{
+    find_instances_for_str
+    if [ -n "$instances" ]; then
+        echo "$instances"
+    fi
+}
+
 command_count()
 {
     find_instances
@@ -206,6 +232,10 @@ if [ "$command" == "start" ]; then
 elif [ "$command" == "list" ] || [ "$command" == "ls" ]; then
     parse_no_command_args $@
     command_list
+
+elif [ "$command" == "listg" ]; then
+    parse_str_command_args $@
+    command_listg
 
 elif [ "$command" == "count" ]; then
     parse_no_command_args $@
